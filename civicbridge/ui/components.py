@@ -1,11 +1,39 @@
 import streamlit as st
 
 
+def _card(title: str, body_html: str, variant: str = "") -> None:
+    """
+    Render a styled card block with a title and HTML body.
+
+    Args:
+        title:     Section title string (rendered as a label above the body).
+        body_html: Inner HTML content for the card body.
+        variant:   CSS class suffix for colour accent (e.g. "answer", "simple").
+    """
+    st.markdown(
+        f"""
+        <div class="cb-card cb-{variant}">
+            <div class="cb-card-label">{title}</div>
+            <div class="cb-card-body">{body_html}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_trust_message() -> None:
-    """Render the grounding trust badge below the title."""
-    st.info(
-        "🔒 This answer is based only on the uploaded official documents.",
-        icon=None,
+    """Render the grounding trust badge."""
+    st.markdown(
+        """
+        <div class="cb-card cb-trust">
+            <span class="cb-trust-icon">🔒</span>
+            <span class="cb-trust-text">
+                This answer is based <strong>only</strong> on the uploaded official documents.
+                No external knowledge has been used.
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
@@ -16,8 +44,11 @@ def render_official_answer(answer: str) -> None:
     Args:
         answer: The grounded answer string from the RAG pipeline.
     """
-    st.markdown("### 📄 Official Answer")
-    st.markdown(answer)
+    _card(
+        "📄 Official Answer",
+        f"<p>{answer}</p>",
+        "answer",
+    )
 
 
 def render_simple_explanation(explanation: str) -> None:
@@ -27,8 +58,11 @@ def render_simple_explanation(explanation: str) -> None:
     Args:
         explanation: The plain-language rewrite from simplifier.py.
     """
-    st.markdown("### 💬 Simple Explanation")
-    st.markdown(explanation)
+    _card(
+        "💬 Simple Explanation",
+        f"<p>{explanation}</p>",
+        "simple",
+    )
 
 
 def render_action_steps(steps: list[str]) -> None:
@@ -38,12 +72,21 @@ def render_action_steps(steps: list[str]) -> None:
     Args:
         steps: List of actionable step strings from action_steps.py.
     """
-    st.markdown("### ✅ Action Steps")
     if not steps:
-        st.markdown("_No action steps could be extracted from this answer._")
-        return
-    for i, step in enumerate(steps, start=1):
-        st.markdown(f"**{i}.** {step}")
+        body = "<p><em>No action steps could be extracted from this answer.</em></p>"
+    else:
+        items = "".join(
+            f"""
+            <div class="cb-step-row">
+                <span class="cb-step-num">{i}</span>
+                <span class="cb-step-text">{step}</span>
+            </div>
+            """
+            for i, step in enumerate(steps, start=1)
+        )
+        body = f'<div class="cb-step-list">{items}</div>'
+
+    _card("✅ Action Steps", body, "steps")
 
 
 def render_next_steps(next_steps: dict) -> None:
@@ -55,17 +98,23 @@ def render_next_steps(next_steps: dict) -> None:
             who_can_apply, required_documents, step_by_step_process,
             estimated_processing_time, important_notes.
     """
-    st.markdown("### 🗺️ What Should I Do Next?")
     fields = [
         ("👤 Who can apply", next_steps.get("who_can_apply")),
         ("📋 Required documents", next_steps.get("required_documents")),
         ("🔢 Step-by-step process", next_steps.get("step_by_step_process")),
-        ("⏱️ Estimated processing time", next_steps.get("estimated_processing_time")),
+        ("⏱ Estimated processing time", next_steps.get("estimated_processing_time")),
         ("⚠️ Important notes", next_steps.get("important_notes")),
     ]
-    for label, value in fields:
-        st.markdown(f"**{label}**")
-        st.markdown(value or "_Not specified in the document._")
+    rows = "".join(
+        f"""
+        <div class="cb-field-row">
+            <div class="cb-field-label">{label}</div>
+            <div class="cb-field-value">{value or "<em>Not specified in the document.</em>"}</div>
+        </div>
+        """
+        for label, value in fields
+    )
+    _card("🗺️ What Should I Do Next?", rows, "next")
 
 
 def render_source_excerpts(source_documents: list) -> None:
@@ -76,26 +125,41 @@ def render_source_excerpts(source_documents: list) -> None:
         source_documents: List of LangChain Document objects returned by
                           the RAG pipeline.
     """
-    st.markdown("### 🔍 Source / Evidence")
+    st.markdown(
+        '<div class="cb-section-label">🔍 Source / Evidence</div>',
+        unsafe_allow_html=True,
+    )
     if not source_documents:
         st.markdown("_No source excerpts available._")
         return
     for i, doc in enumerate(source_documents, start=1):
         page = doc.metadata.get("page", "?")
-        with st.expander(f"Excerpt {i} — page {page}"):
-            st.markdown(f"_{doc.page_content.strip()}_")
+        source = doc.metadata.get("source", "document")
+        label = f"Excerpt {i} · page {page}"
+        with st.expander(label):
+            st.caption(f"Source: {source}  ·  Page {page}")
+            st.markdown(
+                f'<div class="cb-excerpt-text">{doc.page_content.strip()}</div>',
+                unsafe_allow_html=True,
+            )
 
 
-def render_translation_output(translated_blocks: dict) -> None:
+def render_translation_output(translated_blocks: dict, language: str = "") -> None:
     """
     Render translated versions of all output sections.
 
     Args:
-        translated_blocks: Dict mapping section label (str) to
-                           translated text (str).
+        translated_blocks: Dict mapping section label (str) to translated text (str).
+        language:          Display name of the target language.
     """
-    st.markdown("### 🌐 Translation")
-    for label, text in translated_blocks.items():
-        st.markdown(f"**{label}**")
-        st.markdown(text)
-        st.markdown("---")
+    title = f"🌐 Translation — {language}" if language else "🌐 Translation"
+    rows = "".join(
+        f"""
+        <div class="cb-field-row">
+            <div class="cb-field-label">{label}</div>
+            <div class="cb-field-value">{text}</div>
+        </div>
+        """
+        for label, text in translated_blocks.items()
+    )
+    _card(title, rows, "translate")
