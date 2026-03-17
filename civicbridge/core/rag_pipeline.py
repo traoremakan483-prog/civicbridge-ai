@@ -1,4 +1,4 @@
-from langchain.schema import Document
+from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
 
 from config.prompts import GROUNDED_ANSWER_PROMPT
