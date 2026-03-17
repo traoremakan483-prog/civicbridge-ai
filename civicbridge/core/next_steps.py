@@ -1,5 +1,3 @@
-import json
-
 from langchain_openai import ChatOpenAI
 
 from config.prompts import NEXT_STEPS_PROMPT
@@ -72,26 +70,37 @@ def _parse_sections(raw: str) -> dict:
 
 def generate_next_steps(question: str, context: str) -> dict:
     """
-    Produce a structured "What Should I Do Next?" guide.
+    Produce a structured "What Should I Do Next?" guide from raw document context.
 
-    The output is built strictly from the retrieved document context and
-    the citizen's question. Missing sections are filled with a safe
-    fallback string rather than fabricated content.
+    This function intentionally receives the raw retrieved context rather than
+    a pre-generated answer. A generated answer may have been condensed during
+    the RAG step, losing detail about eligibility, required documents, or
+    processing time. Using the full context gives the LLM the best chance of
+    populating every section accurately.
+
+    The function must not invent or infer details not present in the context.
+    Any section that cannot be answered from the context is filled with the
+    safe fallback string "Not specified in the document." rather than
+    fabricated content.
 
     Args:
-        question: The citizen's original question.
-        context:  The combined text of the retrieved document chunks.
+        question: The citizen's original question. Used to focus the LLM on
+                  the most relevant parts of the context.
+        context:  The combined text of the retrieved document chunks, as
+                  returned by document_loader / vector_store.
 
     Returns:
-        A dict with these exact keys:
-            - who_can_apply
-            - required_documents
-            - step_by_step_process
-            - estimated_processing_time
-            - important_notes
+        A dict that always contains exactly these five keys:
+            - who_can_apply            (str) Eligibility criteria.
+            - required_documents       (str) Documents the citizen must prepare.
+            - step_by_step_process     (str) Steps to apply or access the service.
+            - estimated_processing_time (str) Typical processing duration, if stated.
+            - important_notes          (str) Warnings, deadlines, or restrictions.
+        Each value is either extracted from the document or falls back to
+        "Not specified in the document."
 
     Raises:
-        ValueError: If both question and context are empty.
+        ValueError: If both question and context are empty strings.
         Exception: Propagates any OpenAI API errors to the caller.
     """
     if not question.strip() and not context.strip():
