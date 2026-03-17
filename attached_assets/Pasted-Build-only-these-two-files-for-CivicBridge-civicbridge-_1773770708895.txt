@@ -1,0 +1,92 @@
+Build only these two files for CivicBridge:
+
+- civicbridge/ui/components.py
+- civicbridge/app.py
+
+Do not modify any other files.
+Do not create extra files.
+Keep everything fully portable to GitHub.
+Do not use Replit-specific configuration.
+Do not hardcode secrets.
+
+Goal:
+Create a clean, simple, and demo-ready Streamlit app that connects all existing modules into a working MVP.
+
+UI requirements:
+- Lightweight chat-style interface
+- Clean and readable layout
+- Clearly separated response sections (cards)
+
+Main flow:
+1. Load a sample document automatically on startup (from settings)
+2. Allow optional PDF upload to replace it
+3. User enters a question
+4. System runs:
+   - RAG pipeline → answer + sources
+   - simplifier → simple explanation
+   - action_steps → bullet steps
+   - next_steps → structured guide
+5. Display all outputs clearly
+6. Allow translation of outputs into selected language
+
+Requirements for civicbridge/ui/components.py:
+- Create reusable functions to render:
+  - Answer section
+  - Simple explanation
+  - Action steps list
+  - "What Should I Do Next?" structured block
+  - Source excerpts
+- Keep styling minimal but clean (use Streamlit markdown)
+- No heavy CSS
+
+Requirements for civicbridge/app.py:
+
+1. Setup:
+- Load environment variables with python-dotenv
+- Initialize Streamlit app
+- Display app title and short description
+
+2. Document handling:
+- Load sample PDF automatically on startup
+- Allow user to upload a PDF
+- Rebuild vector store when document changes
+
+3. User input:
+- Text input for question
+- Submit button
+
+4. Processing:
+- Call generate_answer(question, retriever)
+- Call simplify_answer(answer)
+- Call generate_action_steps(answer)
+- Call generate_next_steps(question, context)
+- Extract context from retrieved documents
+
+5. Output display:
+- Show:
+  - Official Answer
+  - Simple Explanation
+  - Action Steps
+  - What Should I Do Next
+  - Source excerpts
+- Display trust message:
+  "This answer is based only on the uploaded official documents."
+
+6. Translation:
+- Dropdown to select language (from settings)
+- Button to translate outputs
+- Apply translation to all visible sections
+
+7. Error handling:
+- Handle missing API key
+- Handle missing document
+- Handle empty answers safely
+
+Implementation rules:
+- Keep code simple and readable
+- No session complexity
+- No caching yet
+- No advanced UI components
+- No overengineering
+
+After building, provide a concise explanation of how the app works end-to-end.
