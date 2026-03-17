@@ -1,0 +1,72 @@
+Build only these four files for CivicBridge:
+
+- civicbridge/core/simplifier.py
+- civicbridge/core/action_steps.py
+- civicbridge/core/next_steps.py
+- civicbridge/core/translator.py
+
+Do not modify any other files.
+Do not create extra files.
+Do not implement UI yet.
+Keep everything fully portable to GitHub.
+Do not use Replit-specific configuration.
+Do not hardcode secrets.
+
+Goal:
+Implement the four enrichment modules that transform a grounded answer into:
+1. a simpler explanation,
+2. 3–5 actionable steps,
+3. a "What Should I Do Next?" structured output,
+4. a translation into one of the supported languages.
+
+General rules for all four files:
+- use the OpenAI LLM from settings.py
+- use the corresponding prompt constants from config/prompts.py
+- keep the code simple and explicit
+- no async
+- no caching
+- no extra abstraction layers
+- include docstrings
+- include basic error handling
+- keep outputs safe and deterministic
+- use temperature=0 where appropriate
+
+Requirements for civicbridge/core/simplifier.py:
+1. Implement a function:
+   simplify_answer(answer: str) -> str
+2. It should take the grounded answer and rewrite it in clearer, simpler language
+3. It must preserve meaning and avoid adding new facts
+
+Requirements for civicbridge/core/action_steps.py:
+1. Implement a function:
+   generate_action_steps(answer: str) -> list[str]
+2. It should return 3–5 concise actionable bullet points
+3. If the answer does not contain enough information, return only the steps supported by the answer
+4. Do not fabricate missing steps
+
+Requirements for civicbridge/core/next_steps.py:
+1. Implement a function:
+   generate_next_steps(answer: str) -> dict
+2. It should return a structured dictionary with these exact keys:
+   - who_can_apply
+   - required_documents
+   - step_by_step_process
+   - estimated_processing_time
+   - important_notes
+3. Use safe fallbacks such as "Not specified in the document" when needed
+4. Do not fabricate missing details
+
+Requirements for civicbridge/core/translator.py:
+1. Implement a function:
+   translate_text(text: str, target_language: str) -> str
+2. It should translate into one of the supported languages from settings.py
+3. If the target language is unsupported, raise a clear error
+4. Preserve meaning and formatting as much as possible
+
+Important:
+- These modules should transform the grounded answer only
+- They should not retrieve documents themselves
+- They should not answer user questions directly
+- They should not access the vector store or retriever
+
+After creating the files, provide a concise summary of what each file does.
