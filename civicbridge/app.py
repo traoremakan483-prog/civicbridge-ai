@@ -258,10 +258,13 @@ if uploaded_file is not None:
         with st.spinner(f"Processing **{uploaded_file.name}**…"):
             chunks = load_document(uploaded_file, filename=uploaded_file.name)
         if chunks:
-            st.session_state.retriever = get_retriever(build_vector_store(chunks))
-            st.session_state.active_doc_name = doc_name
-            st.session_state.result = None
-            st.sidebar.success(f"✅ {uploaded_file.name} loaded ({len(chunks)} chunks)")
+            try:
+                st.session_state.retriever = get_retriever(build_vector_store(chunks))
+                st.session_state.active_doc_name = doc_name
+                st.session_state.result = None
+                st.sidebar.success(f"✅ {uploaded_file.name} loaded ({len(chunks)} chunks)")
+            except Exception as e:
+                st.sidebar.error(f"Failed to index document: {e}")
         else:
             st.sidebar.error("Could not read the uploaded PDF. Try another file.")
 else:
@@ -273,10 +276,13 @@ else:
             with st.spinner(f"Loading **{selected_demo}**…"):
                 chunks = load_document(demo_path)
             if chunks:
-                st.session_state.retriever = get_retriever(build_vector_store(chunks))
-                st.session_state.active_doc_name = demo_key
-                st.session_state.result = None
-                st.sidebar.success(f"📄 {selected_demo} loaded")
+                try:
+                    st.session_state.retriever = get_retriever(build_vector_store(chunks))
+                    st.session_state.active_doc_name = demo_key
+                    st.session_state.result = None
+                    st.sidebar.success(f"📄 {selected_demo} loaded")
+                except Exception as e:
+                    st.sidebar.error(f"Failed to index document: {e}")
             else:
                 st.sidebar.error(f"Could not read {demo_path.name}.")
         else:
