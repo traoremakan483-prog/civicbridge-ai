@@ -8,7 +8,10 @@
 
 ## MVP Features
 
-- **Upload any official PDF** or use the bundled sample healthcare document
+- **Two bundled demo documents** ready to use out of the box:
+  - National Healthcare Assistance Program (NHAP)
+  - Community Social Support Grant (CSSG)
+- **Upload any official PDF** to query your own document instead
 - **Ask a question** about a public service in plain language
 - **Receive a structured response** with five clear sections:
   - Official Answer — grounded directly in the document

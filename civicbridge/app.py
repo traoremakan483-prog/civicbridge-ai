@@ -5,7 +5,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from config.settings import APP_NAME, APP_TAGLINE, SAMPLE_DOCUMENT_PATH, SUPPORTED_LANGUAGES
+from config.settings import APP_NAME, APP_TAGLINE, BASE_DIR, SUPPORTED_LANGUAGES
+
+DEMO_DOCUMENTS = {
+    "National Healthcare Assistance Program (NHAP)": BASE_DIR / "docs" / "NHAP_Official_Guide.pdf",
+    "Community Social Support Grant (CSSG)": BASE_DIR / "docs" / "CSSG_Official_Guide.pdf",
+}
+
 from core.document_loader import load_and_split
 from core.vector_store import build_vector_store, get_retriever
 from core.rag_pipeline import generate_answer
@@ -188,16 +194,33 @@ if not check_api_key():
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("### 📂 Document")
+    st.markdown("### 📋 Demo Documents")
+    demo_names = list(DEMO_DOCUMENTS.keys())
+    selected_demo = st.selectbox(
+        "Select a bundled document",
+        options=demo_names,
+        index=0,
+        label_visibility="collapsed",
+    )
+    st.markdown(
+        "<p style='font-size:0.82rem;color:#94a3b8;margin-top:0.3rem;'>"
+        "Two official-style demo documents are included.<br>"
+        "Select one to load it instantly."
+        "</p>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+    st.markdown("### 📂 Upload your own PDF")
     uploaded_file = st.file_uploader(
         "Upload an official PDF",
         type=["pdf"],
-        help="Upload any official public-service document to query.",
+        help="Uploading a PDF temporarily overrides the selected demo document.",
     )
     st.markdown(
-        "<p style='font-size:0.82rem;color:#94a3b8;margin-top:0.4rem;'>"
+        "<p style='font-size:0.82rem;color:#94a3b8;margin-top:0.3rem;'>"
         "Supported: any text-based PDF.<br>"
-        "If no file is uploaded, a sample healthcare document loads automatically."
+        "Overrides the demo selection above while active."
         "</p>",
         unsafe_allow_html=True,
     )
@@ -229,34 +252,41 @@ if "result" not in st.session_state:
 # ── Document loading ───────────────────────────────────────────────────────────
 
 if uploaded_file is not None:
-    doc_name = uploaded_file.name
+    # Uploaded file takes priority over the demo selector.
+    doc_name = f"upload:{uploaded_file.name}"
     if st.session_state.active_doc_name != doc_name:
-        with st.spinner(f"Processing **{doc_name}**…"):
-            chunks = load_document(uploaded_file, filename=doc_name)
+        with st.spinner(f"Processing **{uploaded_file.name}**…"):
+            chunks = load_document(uploaded_file, filename=uploaded_file.name)
         if chunks:
             st.session_state.retriever = get_retriever(build_vector_store(chunks))
             st.session_state.active_doc_name = doc_name
             st.session_state.result = None
-            st.sidebar.success(f"✅ {doc_name} loaded ({len(chunks)} chunks)")
+            st.sidebar.success(f"✅ {uploaded_file.name} loaded ({len(chunks)} chunks)")
         else:
             st.sidebar.error("Could not read the uploaded PDF. Try another file.")
 else:
-    if st.session_state.active_doc_name != "sample":
-        if SAMPLE_DOCUMENT_PATH.exists():
-            with st.spinner("Loading sample document…"):
-                chunks = load_document(SAMPLE_DOCUMENT_PATH)
+    # Load the selected demo document when it changes.
+    demo_key = f"demo:{selected_demo}"
+    if st.session_state.active_doc_name != demo_key:
+        demo_path = DEMO_DOCUMENTS[selected_demo]
+        if demo_path.exists():
+            with st.spinner(f"Loading **{selected_demo}**…"):
+                chunks = load_document(demo_path)
             if chunks:
                 st.session_state.retriever = get_retriever(build_vector_store(chunks))
-                st.session_state.active_doc_name = "sample"
-                st.sidebar.success("📄 Sample document loaded")
+                st.session_state.active_doc_name = demo_key
+                st.session_state.result = None
+                st.sidebar.success(f"📄 {selected_demo} loaded")
+            else:
+                st.sidebar.error(f"Could not read {demo_path.name}.")
         else:
-            st.sidebar.warning(
-                "No sample document found at `docs/sample_document.pdf`. "
-                "Please upload a PDF to get started."
+            st.sidebar.error(
+                f"Demo document not found: `docs/{demo_path.name}`. "
+                "Please check the `civicbridge/docs/` folder."
             )
 
 if st.session_state.retriever is None:
-    st.info("👈 Upload a PDF in the sidebar — or add a sample document to `docs/` — to get started.")
+    st.info("👈 Select a demo document in the sidebar, or upload your own PDF, to get started.")
     st.stop()
 
 # ── Question input ─────────────────────────────────────────────────────────────

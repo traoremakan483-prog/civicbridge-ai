@@ -1,0 +1,69 @@
+I am uploading two PDF files in this conversation for CivicBridge.
+
+Please do the following using those uploaded files:
+
+1. Place both uploaded PDFs inside:
+- civicbridge/docs/
+
+2. Rename or keep them in a clean, stable way so the app can use them reliably.
+Use these final filenames:
+- civicbridge/docs/NHAP_Official_Guide.pdf
+- civicbridge/docs/CSSG_Official_Guide.pdf
+
+3. Update the app with minimal necessary changes so it supports bundled demo documents.
+
+Modify only the files that are strictly necessary.
+Do not rewrite the whole app.
+Do not change the core RAG logic unless needed for document selection.
+Keep everything fully portable to GitHub.
+Do not use Replit-specific configuration.
+Do not hardcode secrets.
+
+Goal:
+Allow the app to work immediately with bundled demo PDFs, without requiring upload first.
+
+Requirements:
+
+A. Demo documents
+- Use the two uploaded PDFs as bundled official-style demo documents
+- Keep optional PDF upload as a secondary option
+
+B. Startup behavior
+- On startup, automatically load NHAP_Official_Guide.pdf by default
+- If the user selects another bundled PDF, rebuild the retriever for that document
+- If the user uploads a PDF, that uploaded PDF should temporarily override the bundled one
+
+C. Sidebar UX
+- Add a clear sidebar section called "Demo Documents"
+- Add a selector with these options:
+  - National Healthcare Assistance Program (NHAP)
+  - Community Social Support Grant (CSSG)
+- Show the currently active document name clearly
+
+D. Internal mapping
+- Map the user-friendly names to:
+  - civicbridge/docs/NHAP_Official_Guide.pdf
+  - civicbridge/docs/CSSG_Official_Guide.pdf
+
+E. Stability
+- Rebuild the retriever only when the active document changes
+- Keep session state simple and clean
+- Preserve the existing question-answer flow, translation, and display sections
+
+F. Error handling
+- If a bundled PDF is missing, show a clear error message
+- Do not crash the app if one demo file is missing
+
+G. README
+- Update README only if needed to mention that the app includes 2 bundled demo PDFs for presentation
+
+Important:
+- Keep changes minimal, clean, and demo-ready
+- Do not add unnecessary features
+- Do not overengineer
+
+After making the changes, give a concise summary of:
+- which files were modified
+- where the uploaded PDFs were placed
+- how bundled document selection now works
+- any assumptions made
