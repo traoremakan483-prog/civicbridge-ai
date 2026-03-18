@@ -1,13 +1,8 @@
 modules = ["nodejs-24", "python-3.11"]
 
-[[artifacts]]
-id = "artifacts/api-server"
-
-[[artifacts]]
-id = "artifacts/mockup-sandbox"
-
 [deployment]
 deploymentTarget = "autoscale"
+build = ["bash", "-c", "pip install -r civicbridge/requirements.txt"]
 run = ["streamlit", "run", "civicbridge/app.py", "--server.port", "5000", "--server.address", "0.0.0.0", "--server.headless", "true"]
 
 [workflows]
@@ -31,7 +26,8 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "echo 'CivicBridge is served by the civicbridge-web artifact on port $PORT. Access it via the preview pane.'"
+args = "streamlit run civicbridge/app.py --server.port 5000 --server.address 0.0.0.0 --server.headless true"
+waitForPort = 5000
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -44,3 +40,19 @@ timeoutMs = 20000
 [nix]
 channel = "stable-25_05"
 packages = ["cargo", "freetype", "gumbo", "harfbuzz", "jbig2dec", "libiconv", "libjpeg_turbo", "mupdf", "openjpeg", "rustc", "swig", "xcbuild"]
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 22998
+externalPort = 80
