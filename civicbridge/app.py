@@ -5,20 +5,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from config.settings import APP_NAME, APP_TAGLINE, BASE_DIR, SUPPORTED_LANGUAGES
-
-DEMO_DOCUMENTS = {
-    "National Healthcare Assistance Program (NHAP)": BASE_DIR / "docs" / "NHAP_Official_Guide.pdf",
-    "Community Social Support Grant (CSSG)": BASE_DIR / "docs" / "CSSG_Official_Guide.pdf",
-}
-
+from config.settings import (
+    APP_NAME,
+    APP_TAGLINE,
+    DOMAIN_DESCRIPTIONS,
+    SUPPORT_DOMAINS,
+    SUPPORTED_LANGUAGES,
+    UI_LABELS,
+)
 from core.document_loader import load_and_split
 from core.vector_store import build_vector_store, get_retriever
 from core.rag_pipeline import generate_answer
 from core.simplifier import simplify_answer
 from core.action_steps import generate_action_steps
 from core.next_steps import generate_next_steps
-from core.translator import translate_text
+from core.translator import translate_text, translate_to_english
 from ui.components import (
     render_trust_message,
     render_official_answer,
@@ -124,6 +125,39 @@ CSS = """
     line-height: 1.55;
 }
 .cb-divider { border: none; border-top: 1px solid #e2e8f0; margin: 1.2rem 0; }
+
+/* ── Domain info box ────────────────────────────────────── */
+.cb-domain-box {
+    background: #f8faff;
+    border: 1px solid #dbeafe;
+    border-left: 4px solid #3b82f6;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.2rem;
+    font-size: 0.88rem;
+    color: #1e40af;
+    line-height: 1.5;
+}
+.cb-domain-box strong { color: #1e3a8a; }
+
+/* ── What we support grid ───────────────────────────────── */
+.cb-support-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+    margin-bottom: 1.2rem;
+}
+.cb-support-item {
+    background: #f8faff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.86rem;
+    color: #334155;
+}
+.cb-support-item .cb-item-icon { font-size: 1.1rem; }
+.cb-support-item .cb-item-name { font-weight: 600; color: #1e293b; }
+.cb-support-item .cb-item-prog { font-size: 0.78rem; color: #64748b; }
 </style>
 """
 
@@ -143,7 +177,6 @@ def check_api_key() -> bool:
 def load_document(file_path_or_bytes, filename: str = "") -> list:
     """
     Load and split a document from a file path or uploaded bytes.
-
     Returns a list of document chunks, or an empty list on failure.
     """
     try:
@@ -170,76 +203,6 @@ def build_context_string(source_documents: list) -> str:
 st.set_page_config(page_title=APP_NAME, page_icon="🌏", layout="centered")
 st.markdown(CSS, unsafe_allow_html=True)
 
-# ── Hero header ────────────────────────────────────────────────────────────────
-
-st.markdown(
-    f"""
-    <div class="cb-hero">
-        <div class="cb-hero-title">🌏 {APP_NAME}</div>
-        <div class="cb-hero-sub">{APP_TAGLINE}</div>
-        <div class="cb-hero-desc">
-            Ask questions about public healthcare and social-aid services.
-            Get grounded answers, plain explanations, and clear action steps —
-            in English, Malay, or Indonesian.
-        </div>
-    </div>
-    <hr class="cb-divider">
-    """,
-    unsafe_allow_html=True,
-)
-
-if not check_api_key():
-    st.stop()
-
-# ── Sidebar ────────────────────────────────────────────────────────────────────
-
-with st.sidebar:
-    st.markdown("### 📋 Demo Documents")
-    demo_names = list(DEMO_DOCUMENTS.keys())
-    selected_demo = st.selectbox(
-        "Select a bundled document",
-        options=demo_names,
-        index=0,
-        label_visibility="collapsed",
-    )
-    st.markdown(
-        "<p style='font-size:0.82rem;color:#94a3b8;margin-top:0.3rem;'>"
-        "Two official-style demo documents are included.<br>"
-        "Select one to load it instantly."
-        "</p>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("---")
-    st.markdown("### 📂 Upload your own PDF")
-    uploaded_file = st.file_uploader(
-        "Upload an official PDF",
-        type=["pdf"],
-        help="Uploading a PDF temporarily overrides the selected demo document.",
-    )
-    st.markdown(
-        "<p style='font-size:0.82rem;color:#94a3b8;margin-top:0.3rem;'>"
-        "Supported: any text-based PDF.<br>"
-        "Overrides the demo selection above while active."
-        "</p>",
-        unsafe_allow_html=True,
-    )
-    st.markdown("---")
-    st.markdown("### 🌐 Language")
-    lang_options = list(SUPPORTED_LANGUAGES.keys())
-    selected_lang = st.selectbox(
-        "Translation language",
-        options=lang_options,
-        index=0,
-        label_visibility="collapsed",
-    )
-    st.markdown(
-        "<p style='font-size:0.82rem;color:#94a3b8;margin-top:0.4rem;'>"
-        "Select a language, then click <strong>Translate</strong> after getting an answer."
-        "</p>",
-        unsafe_allow_html=True,
-    )
-
 # ── Session state ──────────────────────────────────────────────────────────────
 
 if "retriever" not in st.session_state:
@@ -249,13 +212,84 @@ if "active_doc_name" not in st.session_state:
 if "result" not in st.session_state:
     st.session_state.result = None
 
+uploaded_file = None  # default; may be overwritten by the file uploader below
+
+# ── Sidebar ────────────────────────────────────────────────────────────────────
+
+with st.sidebar:
+    # 1. Language selector (drives UI labels + output translation)
+    lang_options = list(SUPPORTED_LANGUAGES.keys())
+    selected_lang = st.selectbox(
+        "🌐 Your Language",
+        options=lang_options,
+        index=0,
+        key="lang_select",
+    )
+    L = UI_LABELS[selected_lang]
+
+    st.markdown("---")
+
+    # 2. Support domain selector (primary experience)
+    st.markdown(f"### {L['domain_header']}")
+    st.markdown(
+        f"<p style='font-size:0.82rem;color:#94a3b8;margin-top:-0.4rem;margin-bottom:0.6rem;'>"
+        f"{L['domain_hint']}</p>",
+        unsafe_allow_html=True,
+    )
+    domain_names = list(SUPPORT_DOMAINS.keys())
+    selected_domain = st.selectbox(
+        "Support domain",
+        options=domain_names,
+        index=0,
+        label_visibility="collapsed",
+    )
+
+    st.markdown("---")
+
+    # 3. Advanced: PDF upload (secondary / optional)
+    with st.expander(L["advanced_header"], expanded=False):
+        st.markdown(
+            f"<p style='font-size:0.82rem;color:#64748b;margin-bottom:0.6rem;'>"
+            f"{L['advanced_hint']}</p>",
+            unsafe_allow_html=True,
+        )
+        uploaded_file = st.file_uploader(
+            L["upload_label"],
+            type=["pdf"],
+            help=L["upload_note"],
+        )
+        if uploaded_file:
+            st.markdown(
+                f"<p style='font-size:0.78rem;color:#f59e0b;margin-top:0.3rem;'>"
+                f"⚠️ {L['upload_note']}</p>",
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("---")
+    st.markdown(
+        "<p style='font-size:0.75rem;color:#cbd5e1;text-align:center;'>"
+        "CivicBridge · Prototype<br>"
+        "Curated official-style source guides"
+        "</p>",
+        unsafe_allow_html=True,
+    )
+
+# ── Hero header ────────────────────────────────────────────────────────────────
+
+st.markdown(
+    f"""<div class="cb-hero"><div class="cb-hero-title">🌏 {APP_NAME}</div><div class="cb-hero-sub">{APP_TAGLINE}</div><div class="cb-hero-desc">{L['hero_desc']}</div></div><hr class="cb-divider">""",
+    unsafe_allow_html=True,
+)
+
+if not check_api_key():
+    st.stop()
+
 # ── Document loading ───────────────────────────────────────────────────────────
 
 if uploaded_file is not None:
-    # Uploaded file takes priority over the demo selector.
     doc_name = f"upload:{uploaded_file.name}"
     if st.session_state.active_doc_name != doc_name:
-        with st.spinner(f"Processing **{uploaded_file.name}**…"):
+        with st.spinner(L["spinner_loading"]):
             chunks = load_document(uploaded_file, filename=uploaded_file.name)
         if chunks:
             try:
@@ -268,67 +302,81 @@ if uploaded_file is not None:
         else:
             st.sidebar.error("Could not read the uploaded PDF. Try another file.")
 else:
-    # Load the selected demo document when it changes.
-    demo_key = f"demo:{selected_demo}"
-    if st.session_state.active_doc_name != demo_key:
-        demo_path = DEMO_DOCUMENTS[selected_demo]
-        if demo_path.exists():
-            with st.spinner(f"Loading **{selected_demo}**…"):
-                chunks = load_document(demo_path)
+    domain_key = f"domain:{selected_domain}"
+    if st.session_state.active_doc_name != domain_key:
+        domain_path = SUPPORT_DOMAINS[selected_domain]
+        if domain_path.exists():
+            with st.spinner(L["spinner_loading"]):
+                chunks = load_document(domain_path)
             if chunks:
                 try:
                     st.session_state.retriever = get_retriever(build_vector_store(chunks))
-                    st.session_state.active_doc_name = demo_key
+                    st.session_state.active_doc_name = domain_key
                     st.session_state.result = None
-                    st.sidebar.success(f"📄 {selected_demo} loaded")
                 except Exception as e:
-                    st.sidebar.error(f"Failed to index document: {e}")
+                    st.sidebar.error(f"Failed to index knowledge base: {e}")
             else:
-                st.sidebar.error(f"Could not read {demo_path.name}.")
+                st.sidebar.error(f"Could not read {domain_path.name}.")
         else:
             st.sidebar.error(
-                f"Demo document not found: `docs/{demo_path.name}`. "
+                f"Knowledge base not found: `docs/{domain_path.name}`. "
                 "Please check the `civicbridge/docs/` folder."
             )
 
+# ── What CivicBridge can help with ────────────────────────────────────────────
+
 if st.session_state.retriever is None:
-    st.info("👈 Select a demo document in the sidebar, or upload your own PDF, to get started.")
+    st.info(L["info_no_doc"])
     st.stop()
+
+# Show active domain info when loaded from a built-in domain
+if uploaded_file is None:
+    prog_name = DOMAIN_DESCRIPTIONS.get(selected_domain, "")
+    st.markdown(
+        f'<div class="cb-domain-box">📂 <strong>{selected_domain}</strong>'
+        f'<br><span style="color:#3b82f6;">{prog_name}</span>'
+        f' &nbsp;·&nbsp; Curated official-style source guide</div>',
+        unsafe_allow_html=True,
+    )
 
 # ── Question input ─────────────────────────────────────────────────────────────
 
 st.markdown(
-    "<p style='font-size:0.9rem;font-weight:600;color:#334155;margin-bottom:0.3rem;'>"
-    "Ask a question about the document</p>",
+    f"<p style='font-size:0.9rem;font-weight:600;color:#334155;margin-bottom:0.3rem;'>"
+    f"{L['question_header']}</p>",
     unsafe_allow_html=True,
 )
 question = st.text_input(
     label="Your question",
-    placeholder="e.g. Who is eligible for healthcare assistance?",
+    placeholder=L["question_placeholder"],
     label_visibility="collapsed",
 )
-submit = st.button("Get Answer →", type="primary", use_container_width=True)
+submit = st.button(L["submit_btn"], type="primary", use_container_width=True)
 
 # ── Pipeline execution ─────────────────────────────────────────────────────────
 
 if submit:
     if not question.strip():
-        st.warning("Please enter a question before submitting.")
+        st.warning(L["warn_empty"])
         st.stop()
 
-    with st.spinner("Searching the document and generating your answer…"):
+    with st.spinner(L["spinner_answering"]):
         try:
-            rag_result = generate_answer(question, st.session_state.retriever)
+            # Translate question to English for retrieval if needed
+            question_en = translate_to_english(question, selected_lang)
+
+            rag_result = generate_answer(question_en, st.session_state.retriever)
             answer = rag_result["answer"]
             source_docs = rag_result["source_documents"]
             context = build_context_string(source_docs)
 
             simple = simplify_answer(answer)
             steps = generate_action_steps(answer)
-            next_s = generate_next_steps(question, context)
+            next_s = generate_next_steps(question_en, context)
 
             st.session_state.result = {
                 "question": question,
+                "question_en": question_en,
                 "answer": answer,
                 "simple": simple,
                 "steps": steps,
@@ -357,16 +405,14 @@ if st.session_state.result:
     render_source_excerpts(r["source_docs"])
 
     st.markdown('<hr class="cb-divider">', unsafe_allow_html=True)
-    translate_btn = st.button(
-        f"Translate into {selected_lang} →",
-        use_container_width=True,
-    )
+    translate_label = f"{L['translate_btn_prefix']} {selected_lang} →"
+    translate_btn = st.button(translate_label, use_container_width=True)
 
     if translate_btn:
         if selected_lang == "English":
-            st.info("Outputs are already in English.")
+            st.info(L["already_english"])
         else:
-            with st.spinner(f"Translating into {selected_lang}…"):
+            with st.spinner(L["spinner_translating"]):
                 try:
                     blocks_to_translate = {
                         "Official Answer": r["answer"],

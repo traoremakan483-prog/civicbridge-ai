@@ -64,6 +64,15 @@ Citizen's question:
 What Should I Do Next:
 """
 
+TRANSLATE_TO_ENGLISH_PROMPT = """Translate the following question into English.
+Output ONLY the translated English question — nothing else, no explanation.
+
+Question in {source_language}:
+{question}
+
+English translation:
+"""
+
 TRANSLATION_PROMPT = """Translate the following text into {target_language}.
 
 - Preserve the meaning, tone, and structure exactly.

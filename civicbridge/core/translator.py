@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI
 
-from config.prompts import TRANSLATION_PROMPT
+from config.prompts import TRANSLATE_TO_ENGLISH_PROMPT, TRANSLATION_PROMPT
 from config.settings import DEFAULT_LLM_MODEL, SUPPORTED_LANGUAGES
 
 
@@ -43,4 +43,34 @@ def translate_text(text: str, target_language: str) -> str:
     llm = ChatOpenAI(model=DEFAULT_LLM_MODEL, temperature=0)
     response = llm.invoke(prompt)
 
+    return response.content.strip()
+
+
+def translate_to_english(question: str, source_language: str) -> str:
+    """
+    Translate a citizen's question from a supported language into English
+    so it can be used for vector-store retrieval.
+
+    If source_language is "English" the original question is returned unchanged.
+
+    Args:
+        question:        The question as typed by the user.
+        source_language: Display name of the input language, e.g. "Malay".
+
+    Returns:
+        The question in English as a plain string.
+    """
+    if not question or not question.strip():
+        raise ValueError("Cannot translate an empty question.")
+
+    if source_language == "English":
+        return question.strip()
+
+    prompt = TRANSLATE_TO_ENGLISH_PROMPT.format(
+        source_language=source_language,
+        question=question,
+    )
+
+    llm = ChatOpenAI(model=DEFAULT_LLM_MODEL, temperature=0)
+    response = llm.invoke(prompt)
     return response.content.strip()
