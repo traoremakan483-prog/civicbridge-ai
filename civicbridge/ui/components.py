@@ -18,12 +18,7 @@ def _card(title: str, body_html: str, variant: str = "") -> None:
         variant:   CSS class suffix for colour accent (e.g. "answer", "simple").
     """
     st.markdown(
-        f"""
-        <div class="cb-card cb-{variant}">
-            <div class="cb-card-label">{title}</div>
-            <div class="cb-card-body">{body_html}</div>
-        </div>
-        """,
+        f'<div class="cb-card cb-{variant}"><div class="cb-card-label">{title}</div><div class="cb-card-body">{body_html}</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -80,26 +75,16 @@ def render_action_steps(steps: list[str]) -> None:
         steps: List of actionable step strings from action_steps.py.
     """
     if not steps:
-        body = "<p><em>No action steps could be extracted from this answer.</em></p>"
+        body = '<p><em>No action steps could be extracted from this answer.</em></p>'
     else:
         items = "".join(
-            f"""
-            <div class="cb-step-row">
-                <span class="cb-step-num">{i}</span>
-                <span class="cb-step-text">{_safe_html(step)}</span>
-            </div>
-            """
+            f'<div class="cb-step-row"><span class="cb-step-num">{i}</span><span class="cb-step-text">{_safe_html(step)}</span></div>'
             for i, step in enumerate(steps, start=1)
         )
         body = f'<div class="cb-step-list">{items}</div>'
 
     st.markdown(
-        f"""
-        <div class="cb-card cb-steps">
-            <div class="cb-card-label">✅ Action Steps</div>
-            <div class="cb-card-body">{body}</div>
-        </div>
-        """,
+        f'<div class="cb-card cb-steps"><div class="cb-card-label">✅ Action Steps</div><div class="cb-card-body">{body}</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -121,12 +106,7 @@ def render_next_steps(next_steps: dict) -> None:
         ("⚠️ Important notes", next_steps.get("important_notes")),
     ]
     rows = "".join(
-        f"""
-        <div class="cb-field-row">
-            <div class="cb-field-label">{label}</div>
-            <div class="cb-field-value">{_safe_html(value) if value else "<em>Not specified in the document.</em>"}</div>
-        </div>
-        """
+        f'<div class="cb-field-row"><div class="cb-field-label">{label}</div><div class="cb-field-value">{_safe_html(value) if value else "<em>Not specified in the document.</em>"}</div></div>'
         for label, value in fields
     )
     _card("🗺️ What Should I Do Next?", rows, "next")
@@ -169,12 +149,7 @@ def render_translation_output(translated_blocks: dict, language: str = "") -> No
     """
     title = f"🌐 Translation — {language}" if language else "🌐 Translation"
     rows = "".join(
-        f"""
-        <div class="cb-field-row">
-            <div class="cb-field-label">{html.escape(label)}</div>
-            <div class="cb-field-value">{_safe_html(text)}</div>
-        </div>
-        """
+        f'<div class="cb-field-row"><div class="cb-field-label">{html.escape(label)}</div><div class="cb-field-value">{_safe_html(text)}</div></div>'
         for label, text in translated_blocks.items()
     )
     _card(title, rows, "translate")
