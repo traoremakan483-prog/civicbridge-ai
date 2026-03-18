@@ -6,6 +6,10 @@ build = ["pip", "install", "-r", "civicbridge/requirements.txt"]
 run = ["streamlit", "run", "civicbridge/app.py", "--server.port", "22998", "--server.address", "0.0.0.0", "--server.headless", "true"]
 
 [[ports]]
+localPort = 5000
+externalPort = 5000
+
+[[ports]]
 localPort = 22998
 externalPort = 80
 
