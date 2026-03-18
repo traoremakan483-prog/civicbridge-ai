@@ -4,6 +4,22 @@
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
 
+## CivicBridge (Main Application)
+
+Multilingual public service navigator. Citizens ask questions about healthcare/social-aid services; the system retrieves from official PDFs, provides a grounded answer, simplifies it, generates action steps, and supports English / Malay / Indonesian.
+
+- **Python/Streamlit app**: `civicbridge/` — runs on port 5000
+- **Preview routing**: `artifacts/civicbridge-web/` — Vite dev server on port 22998 that acts as a transparent reverse proxy to port 5000. This is registered as the root `/` artifact so Replit's proxy can route to it.
+- **Demo documents**: `civicbridge/data/` (NHAP PDF, CSSG PDF)
+- **Requirements**: `civicbridge/requirements.txt` — install with `pip install -r civicbridge/requirements.txt`
+- **Secrets**: `OPENAI_API_KEY` in `.env` (or Replit secrets)
+
+### Running locally (outside Replit)
+```bash
+pip install -r civicbridge/requirements.txt
+streamlit run civicbridge/app.py --server.port 5000
+```
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
