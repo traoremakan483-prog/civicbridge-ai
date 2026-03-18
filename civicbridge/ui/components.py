@@ -3,6 +3,11 @@ import html
 import streamlit as st
 
 
+def _safe_html(text: str) -> str:
+    """Escape HTML special characters and convert newlines to <br> tags."""
+    return html.escape(str(text)).replace("\n", "<br>")
+
+
 def _card(title: str, body_html: str, variant: str = "") -> None:
     """
     Render a styled card block with a title and HTML body.
@@ -48,7 +53,7 @@ def render_official_answer(answer: str) -> None:
     """
     _card(
         "📄 Official Answer",
-        f"<p>{answer}</p>",
+        f"<p>{_safe_html(answer)}</p>",
         "answer",
     )
 
@@ -62,7 +67,7 @@ def render_simple_explanation(explanation: str) -> None:
     """
     _card(
         "💬 Simple Explanation",
-        f"<p>{explanation}</p>",
+        f"<p>{_safe_html(explanation)}</p>",
         "simple",
     )
 
@@ -81,7 +86,7 @@ def render_action_steps(steps: list[str]) -> None:
             f"""
             <div class="cb-step-row">
                 <span class="cb-step-num">{i}</span>
-                <span class="cb-step-text">{html.escape(step)}</span>
+                <span class="cb-step-text">{_safe_html(step)}</span>
             </div>
             """
             for i, step in enumerate(steps, start=1)
@@ -119,7 +124,7 @@ def render_next_steps(next_steps: dict) -> None:
         f"""
         <div class="cb-field-row">
             <div class="cb-field-label">{label}</div>
-            <div class="cb-field-value">{value or "<em>Not specified in the document.</em>"}</div>
+            <div class="cb-field-value">{_safe_html(value) if value else "<em>Not specified in the document.</em>"}</div>
         </div>
         """
         for label, value in fields
@@ -149,7 +154,7 @@ def render_source_excerpts(source_documents: list) -> None:
         with st.expander(label):
             st.caption(f"Source: {source}  ·  Page {page}")
             st.markdown(
-                f'<div class="cb-excerpt-text">{doc.page_content.strip()}</div>',
+                f'<div class="cb-excerpt-text">{_safe_html(doc.page_content.strip())}</div>',
                 unsafe_allow_html=True,
             )
 
@@ -166,8 +171,8 @@ def render_translation_output(translated_blocks: dict, language: str = "") -> No
     rows = "".join(
         f"""
         <div class="cb-field-row">
-            <div class="cb-field-label">{label}</div>
-            <div class="cb-field-value">{text}</div>
+            <div class="cb-field-label">{html.escape(label)}</div>
+            <div class="cb-field-value">{_safe_html(text)}</div>
         </div>
         """
         for label, text in translated_blocks.items()
