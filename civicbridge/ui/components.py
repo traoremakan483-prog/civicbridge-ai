@@ -1,3 +1,5 @@
+import html
+
 import streamlit as st
 
 
@@ -79,14 +81,22 @@ def render_action_steps(steps: list[str]) -> None:
             f"""
             <div class="cb-step-row">
                 <span class="cb-step-num">{i}</span>
-                <span class="cb-step-text">{step}</span>
+                <span class="cb-step-text">{html.escape(step)}</span>
             </div>
             """
             for i, step in enumerate(steps, start=1)
         )
         body = f'<div class="cb-step-list">{items}</div>'
 
-    _card("✅ Action Steps", body, "steps")
+    st.markdown(
+        f"""
+        <div class="cb-card cb-steps">
+            <div class="cb-card-label">✅ Action Steps</div>
+            <div class="cb-card-body">{body}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_next_steps(next_steps: dict) -> None:
