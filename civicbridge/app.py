@@ -1,4 +1,5 @@
 import os
+import re
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -223,6 +224,8 @@ def load_document(file_path_or_bytes, filename: str = "") -> list:
         if isinstance(file_path_or_bytes, (str, os.PathLike)):
             return load_and_split(str(file_path_or_bytes))
         tmp_path = f"/tmp/{filename}"
+        if hasattr(file_path_or_bytes, "seek"):
+            file_path_or_bytes.seek(0)
         with open(tmp_path, "wb") as f:
             f.write(file_path_or_bytes.read())
         return load_and_split(tmp_path)
@@ -374,13 +377,20 @@ domain_pills = "".join(
     f'<span class="cb-domain-pill">{d}</span>' for d in SUPPORT_DOMAINS
 )
 st.markdown(
-    f'<div class="cb-what-header">What CivicBridge can help with</div>'
+    f'<div class="cb-what-header">{L["what_help_header"]}</div>'
     f'<div class="cb-domain-pills">{domain_pills}</div>',
     unsafe_allow_html=True,
 )
 
-# Active domain badge
-if uploaded_file is None:
+# Active domain badge — amber when upload is active, blue for built-in domain
+if uploaded_file is not None:
+    st.markdown(
+        f'<div class="cb-domain-box" style="border-left-color:#f59e0b;background:#fffdf5;color:#92400e;">'
+        f'📎 <strong>{uploaded_file.name}</strong>'
+        f'<br><span style="color:#b45309;">{L["upload_active_note"]}</span></div>',
+        unsafe_allow_html=True,
+    )
+else:
     prog_name = DOMAIN_DESCRIPTIONS.get(selected_domain, "")
     st.markdown(
         f'<div class="cb-domain-box">📂 <strong>{selected_domain}</strong>'
@@ -391,9 +401,9 @@ if uploaded_file is None:
 
 # ── Question input ─────────────────────────────────────────────────────────────
 
-# Guidance line (F)
+# Guidance line
 st.markdown(
-    '<p class="cb-guidance">Select a support domain, then ask your question.</p>',
+    f'<p class="cb-guidance">{L["guidance_line"]}</p>',
     unsafe_allow_html=True,
 )
 st.markdown(
@@ -408,68 +418,98 @@ question = st.text_input(
 )
 submit = st.button(L["submit_btn"], type="primary", use_container_width=True)
 
-# Credibility note (G)
+# Credibility note
 st.markdown(
-    '<p class="cb-credibility">Answers are generated from curated official-style source guides.</p>',
+    f'<p class="cb-credibility">{L["credibility_note"]}</p>',
     unsafe_allow_html=True,
 )
 
-# Empty state — shown before any question is submitted (H + B)
+# Empty state — shown before any question is submitted
 if not st.session_state.result:
     st.markdown(
-        '<p style="font-size:0.85rem;color:#64748b;margin-top:0.4rem;text-align:center;">'
-        'Start by selecting a support domain and asking a question.</p>',
+        f'<p style="font-size:0.85rem;color:#64748b;margin-top:0.4rem;text-align:center;">'
+        f'{L["empty_state_msg"]}</p>',
         unsafe_allow_html=True,
     )
     example_items = "".join(
         f'<div class="cb-example-item">{q}</div>'
-        for q in [
-            "Who is eligible for healthcare assistance?",
-            "What documents do I need to apply?",
-            "What financial help is available for low-income households?",
-            "How long does emergency support take to process?",
-            "Can single parents apply for family care support?",
-        ]
+        for q in L["example_questions"]
     )
     st.markdown(
-        f'<div class="cb-examples"><div class="cb-examples-header">Example Questions</div>{example_items}</div>',
+        f'<div class="cb-examples"><div class="cb-examples-header">{L["example_questions_header"]}</div>{example_items}</div>',
         unsafe_allow_html=True,
     )
 
 # ── Pipeline execution ─────────────────────────────────────────────────────────
+
+_NS_KEYS = [
+    "who_can_apply",
+    "required_documents",
+    "step_by_step_process",
+    "estimated_processing_time",
+    "important_notes",
+]
 
 if submit:
     if not question.strip():
         st.warning(L["warn_empty"])
         st.stop()
 
+    # Step 1 — RAG pipeline (always in English internally)
     with st.spinner(L["spinner_answering"]):
         try:
-            # Translate question to English for retrieval if needed
             question_en = translate_to_english(question, selected_lang)
-
             rag_result = generate_answer(question_en, st.session_state.retriever)
             answer = rag_result["answer"]
             source_docs = rag_result["source_documents"]
             context = build_context_string(source_docs)
-
             simple = simplify_answer(answer)
             steps = generate_action_steps(answer)
             next_s = generate_next_steps(question_en, context)
-
-            st.session_state.result = {
-                "question": question,
-                "question_en": question_en,
-                "answer": answer,
-                "simple": simple,
-                "steps": steps,
-                "next_steps": next_s,
-                "source_docs": source_docs,
-                "context": context,
-            }
         except Exception as e:
             st.error(f"Something went wrong: {e}")
             st.stop()
+
+    # Step 2 — Auto-translate all outputs if user language is not English
+    answer_out, simple_out, steps_out, next_s_out = answer, simple, steps, next_s
+    if selected_lang != "English":
+        with st.spinner(L["spinner_translating"]):
+            try:
+                blocks = {
+                    "__answer": answer,
+                    "__simple": simple,
+                    "__steps": "\n".join(f"{i+1}. {s}" for i, s in enumerate(steps)),
+                }
+                for k in _NS_KEYS:
+                    v = next_s.get(k, "")
+                    if v and v != "Not specified in the document.":
+                        blocks[f"__ns_{k}"] = v
+                translated = {k: translate_text(v, selected_lang) for k, v in blocks.items()}
+                answer_out = translated.get("__answer", answer)
+                simple_out = translated.get("__simple", simple)
+                steps_text = translated.get("__steps", "")
+                steps_out = [
+                    re.sub(r"^\d+[\.\)]\s*", "", ln).strip()
+                    for ln in steps_text.splitlines() if ln.strip()
+                ] or steps
+                next_s_out = dict(next_s)
+                for k in _NS_KEYS:
+                    if f"__ns_{k}" in translated:
+                        next_s_out[k] = translated[f"__ns_{k}"]
+            except Exception as e:
+                st.warning(f"Auto-translation failed — showing English output. ({e})")
+
+    st.session_state.result = {
+        "question": question,
+        "question_en": question_en,
+        "answer": answer_out,
+        "simple": simple_out,
+        "steps": steps_out,
+        "next_steps": next_s_out,
+        "source_docs": source_docs,
+        "context": context,
+        "lang": selected_lang,
+    }
 
 # ── Results display ────────────────────────────────────────────────────────────
 
@@ -478,7 +518,7 @@ if st.session_state.result:
 
     st.markdown('<hr class="cb-divider">', unsafe_allow_html=True)
 
-    # Answer source badge (I)
+    # Answer source badge
     badge_label = selected_domain if uploaded_file is None else uploaded_file.name
     st.markdown(
         f'<div><span class="cb-source-badge">Answer based on: <strong>{badge_label}</strong></span></div>',
@@ -486,7 +526,6 @@ if st.session_state.result:
     )
 
     render_trust_message()
-
     render_official_answer(r["answer"])
     render_simple_explanation(r["simple"])
     render_action_steps(r["steps"])
@@ -496,38 +535,45 @@ if st.session_state.result:
     render_source_excerpts(r["source_docs"])
 
     st.markdown('<hr class="cb-divider">', unsafe_allow_html=True)
-    translate_label = f"{L['translate_btn_prefix']} {selected_lang} →"
-    translate_btn = st.button(translate_label, use_container_width=True)
 
-    if translate_btn:
-        if selected_lang == "English":
-            st.info(L["already_english"])
-        else:
-            with st.spinner(L["spinner_translating"]):
-                try:
-                    blocks_to_translate = {
-                        "Official Answer": r["answer"],
-                        "Simple Explanation": r["simple"],
-                        "Action Steps": "\n".join(
-                            f"{i+1}. {s}" for i, s in enumerate(r["steps"])
-                        ),
-                    }
-                    next_s = r["next_steps"]
-                    for label, key in [
-                        ("Who can apply", "who_can_apply"),
-                        ("Required documents", "required_documents"),
-                        ("Step-by-step process", "step_by_step_process"),
-                        ("Estimated processing time", "estimated_processing_time"),
-                        ("Important notes", "important_notes"),
-                    ]:
-                        value = next_s.get(key, "")
-                        if value and value != "Not specified in the document.":
-                            blocks_to_translate[label] = value
-
-                    translated = {
-                        label: translate_text(text, selected_lang)
-                        for label, text in blocks_to_translate.items()
-                    }
-                    render_translation_output(translated, language=selected_lang)
-                except Exception as e:
-                    st.error(f"Translation failed: {e}")
+    # Translate button logic:
+    # - If result is already in the selected language (auto-translated on submit): show info
+    # - Otherwise: offer manual translation (e.g. user changed language after getting answer)
+    result_lang = r.get("lang", "English")
+    if result_lang == selected_lang:
+        if selected_lang != "English":
+            st.info(L["already_in_lang"])
+        # English result in English mode — no translate button needed
+    else:
+        translate_label = f"{L['translate_btn_prefix']} {selected_lang} →"
+        translate_btn = st.button(translate_label, use_container_width=True)
+        if translate_btn:
+            if selected_lang == "English":
+                st.info(L["already_in_lang"])
+            else:
+                with st.spinner(L["spinner_translating"]):
+                    try:
+                        blocks_to_translate = {
+                            "Official Answer": r["answer"],
+                            "Simple Explanation": r["simple"],
+                            "Action Steps": "\n".join(
+                                f"{i+1}. {s}" for i, s in enumerate(r["steps"])
+                            ),
+                        }
+                        for label, key in [
+                            ("Who can apply", "who_can_apply"),
+                            ("Required documents", "required_documents"),
+                            ("Step-by-step process", "step_by_step_process"),
+                            ("Estimated processing time", "estimated_processing_time"),
+                            ("Important notes", "important_notes"),
+                        ]:
+                            value = r["next_steps"].get(key, "")
+                            if value and value != "Not specified in the document.":
+                                blocks_to_translate[label] = value
+                        translated = {
+                            lbl: translate_text(txt, selected_lang)
+                            for lbl, txt in blocks_to_translate.items()
+                        }
+                        render_translation_output(translated, language=selected_lang)
+                    except Exception as e:
+                        st.error(f"Translation failed: {e}")
