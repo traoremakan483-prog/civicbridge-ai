@@ -49,7 +49,7 @@ UI_LABELS = {
         "upload_label": "Upload an official PDF",
         "upload_note": "Overrides the selected support domain while active.",
         "question_header": "Ask your question",
-        "question_placeholder": "e.g. Who is eligible for healthcare assistance?",
+        "question_placeholder": "Ask about healthcare, social aid, emergency support, or family care…",
         "submit_btn": "Get Answer →",
         "translate_btn_prefix": "Translate into",
         "info_no_doc": (
@@ -80,7 +80,7 @@ UI_LABELS = {
         "upload_label": "Muat naik PDF rasmi",
         "upload_note": "Menggantikan domain sokongan yang dipilih semasa aktif.",
         "question_header": "Tanya soalan anda",
-        "question_placeholder": "cth. Siapa yang layak mendapat bantuan penjagaan kesihatan?",
+        "question_placeholder": "Tanya tentang kesihatan, bantuan sosial, sokongan kecemasan, atau penjagaan keluarga…",
         "submit_btn": "Dapatkan Jawapan →",
         "translate_btn_prefix": "Terjemah ke",
         "info_no_doc": (
@@ -111,7 +111,7 @@ UI_LABELS = {
         "upload_label": "Unggah PDF resmi",
         "upload_note": "Menggantikan domain dukungan yang dipilih selama aktif.",
         "question_header": "Ajukan pertanyaan Anda",
-        "question_placeholder": "mis. Siapa yang berhak mendapatkan bantuan kesehatan?",
+        "question_placeholder": "Tanya tentang kesehatan, bantuan sosial, dukungan darurat, atau perawatan keluarga…",
         "submit_btn": "Dapatkan Jawaban →",
         "translate_btn_prefix": "Terjemahkan ke",
         "info_no_doc": (

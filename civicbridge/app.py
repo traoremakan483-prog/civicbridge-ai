@@ -158,6 +158,46 @@ CSS = """
 .cb-support-item .cb-item-icon { font-size: 1.1rem; }
 .cb-support-item .cb-item-name { font-weight: 600; color: #1e293b; }
 .cb-support-item .cb-item-prog { font-size: 0.78rem; color: #64748b; }
+
+/* ── "What we support" pills ────────────────────────────── */
+.cb-what-header {
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.09em; color: #94a3b8; margin-bottom: 0.45rem;
+}
+.cb-domain-pills { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 1rem; }
+.cb-domain-pill {
+    background: #f1f5f9; border: 1px solid #e2e8f0;
+    border-radius: 20px; padding: 0.28rem 0.7rem;
+    font-size: 0.81rem; color: #334155;
+}
+
+/* ── Example questions box ──────────────────────────────── */
+.cb-examples {
+    background: #fafafa; border: 1px solid #e2e8f0;
+    border-radius: 8px; padding: 0.7rem 1rem; margin-bottom: 1rem;
+}
+.cb-examples-header {
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8; margin-bottom: 0.45rem;
+}
+.cb-example-item {
+    font-size: 0.86rem; color: #475569;
+    padding: 0.16rem 0 0.16rem 1rem; position: relative;
+}
+.cb-example-item::before { content: "→"; position: absolute; left: 0; color: #94a3b8; }
+
+/* ── Guidance / credibility notes ───────────────────────── */
+.cb-guidance { font-size: 0.82rem; color: #64748b; margin-bottom: 0.5rem; }
+.cb-credibility { font-size: 0.77rem; color: #94a3b8; margin-top: 0.4rem; text-align: center; }
+
+/* ── Answer source badge ────────────────────────────────── */
+.cb-source-badge {
+    display: inline-block;
+    background: #f1f5f9; border: 1px solid #e2e8f0;
+    border-radius: 6px; padding: 0.22rem 0.6rem;
+    font-size: 0.77rem; color: #475569; margin-bottom: 0.65rem;
+}
+.cb-source-badge strong { color: #1e293b; }
 </style>
 """
 
@@ -329,7 +369,17 @@ if st.session_state.retriever is None:
     st.info(L["info_no_doc"])
     st.stop()
 
-# Show active domain info when loaded from a built-in domain
+# Persistent "What CivicBridge can help with" domain pills (A)
+domain_pills = "".join(
+    f'<span class="cb-domain-pill">{d}</span>' for d in SUPPORT_DOMAINS
+)
+st.markdown(
+    f'<div class="cb-what-header">What CivicBridge can help with</div>'
+    f'<div class="cb-domain-pills">{domain_pills}</div>',
+    unsafe_allow_html=True,
+)
+
+# Active domain badge
 if uploaded_file is None:
     prog_name = DOMAIN_DESCRIPTIONS.get(selected_domain, "")
     st.markdown(
@@ -341,6 +391,11 @@ if uploaded_file is None:
 
 # ── Question input ─────────────────────────────────────────────────────────────
 
+# Guidance line (F)
+st.markdown(
+    '<p class="cb-guidance">Select a support domain, then ask your question.</p>',
+    unsafe_allow_html=True,
+)
 st.markdown(
     f"<p style='font-size:0.9rem;font-weight:600;color:#334155;margin-bottom:0.3rem;'>"
     f"{L['question_header']}</p>",
@@ -352,6 +407,34 @@ question = st.text_input(
     label_visibility="collapsed",
 )
 submit = st.button(L["submit_btn"], type="primary", use_container_width=True)
+
+# Credibility note (G)
+st.markdown(
+    '<p class="cb-credibility">Answers are generated from curated official-style source guides.</p>',
+    unsafe_allow_html=True,
+)
+
+# Empty state — shown before any question is submitted (H + B)
+if not st.session_state.result:
+    st.markdown(
+        '<p style="font-size:0.85rem;color:#64748b;margin-top:0.4rem;text-align:center;">'
+        'Start by selecting a support domain and asking a question.</p>',
+        unsafe_allow_html=True,
+    )
+    example_items = "".join(
+        f'<div class="cb-example-item">{q}</div>'
+        for q in [
+            "Who is eligible for healthcare assistance?",
+            "What documents do I need to apply?",
+            "What financial help is available for low-income households?",
+            "How long does emergency support take to process?",
+            "Can single parents apply for family care support?",
+        ]
+    )
+    st.markdown(
+        f'<div class="cb-examples"><div class="cb-examples-header">Example Questions</div>{example_items}</div>',
+        unsafe_allow_html=True,
+    )
 
 # ── Pipeline execution ─────────────────────────────────────────────────────────
 
@@ -394,6 +477,14 @@ if st.session_state.result:
     r = st.session_state.result
 
     st.markdown('<hr class="cb-divider">', unsafe_allow_html=True)
+
+    # Answer source badge (I)
+    badge_label = selected_domain if uploaded_file is None else uploaded_file.name
+    st.markdown(
+        f'<div><span class="cb-source-badge">Answer based on: <strong>{badge_label}</strong></span></div>',
+        unsafe_allow_html=True,
+    )
+
     render_trust_message()
 
     render_official_answer(r["answer"])
