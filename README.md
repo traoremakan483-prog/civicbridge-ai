@@ -102,6 +102,8 @@ User question (any language)
 ---
 
 ## Getting Started
+access with : https://public-service-ai.replit.app/
+or
 
 ### 1. Clone the repository
 
