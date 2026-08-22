@@ -6,11 +6,44 @@ APP_TAGLINE = "Multilingual Public Service Navigator"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# ── Langues ─────────────────────────────────────────────────────────────────
+#
+# La premiere version proposait anglais, malais, indonesien. Le jury a releve
+# que c'etait insuffisant AU REGARD DU CONCEPT lui-meme, et il avait raison :
+# le malais et l'indonesien sont largement intercomprehensibles, donc trois
+# entrees dans le menu ne faisaient que DEUX portees reelles.
+#
+# Plus grave, c'etait le mauvais choix de langues. Un service public malaisien
+# publie deja en malais et en anglais : les personnes que ces deux langues
+# couvrent savaient deja se debrouiller. Celles qui n'y arrivent pas sont les
+# travailleurs migrants (bengali, nepalais, birman), les Malaisiens indiens
+# tamoulophones et les sinophones les plus ages.
+#
+# Le blocage n'a jamais ete technique — la traduction passe par le modele,
+# donc une langue = une ligne ici. C'etait un defaut de conception produit :
+# avoir choisi les langues qu'on connait plutot que celles des gens qu'on
+# pretend servir.
 SUPPORTED_LANGUAGES = {
     "English": "en",
     "Malay": "ms",
+    "Tamil": "ta",
+    "Mandarin": "zh",
+    "Bengali": "bn",
+    "Nepali": "ne",
+    "Burmese": "my",
     "Indonesian": "id",
 }
+
+# Traduire automatiquement une consigne administrative officielle vers une
+# langue peu dotee n'est pas neutre : une erreur envoie quelqu'un au mauvais
+# guichet avec les mauvais papiers, apres avoir pose un jour de conge qu'il ne
+# peut pas se permettre. On ne refuse pas de traduire pour autant — on affiche
+# l'original anglais a cote, pour qu'un proche bilingue ou un agent puisse
+# verifier.
+MACHINE_TRANSLATION_NOTICE = (
+    "Machine translation. The English version is shown alongside so that "
+    "someone who reads English can check it before you act on it."
+)
 
 SUPPORT_DOMAINS = {
     "🏥 Healthcare Support": BASE_DIR / "docs" / "NHAP_Official_Guide.pdf",
@@ -131,3 +164,24 @@ UI_LABELS = {
         ),
     },
 }
+
+
+def ui_labels_for(language: str) -> dict:
+    """
+    Libelles d'interface pour une langue, avec repli sur l'anglais.
+
+    UI_LABELS n'est traduit a la main que pour trois langues. Les langues
+    ajoutees ensuite servent aux REPONSES — ce qui est l'essentiel — et
+    affichent une interface en anglais en attendant que les 18 cles soient
+    traduites et relues.
+
+    Un acces direct `UI_LABELS[langue]` leverait un KeyError et casserait
+    l'application des qu'on ajoute une langue. Ce repli est ce qui permet
+    d'elargir la couverture sans attendre la traduction complete du chrome.
+    """
+    return UI_LABELS.get(language, UI_LABELS["English"])
+
+
+def ui_is_translated(language: str) -> bool:
+    """Vrai si l'interface elle-meme existe dans cette langue."""
+    return language in UI_LABELS

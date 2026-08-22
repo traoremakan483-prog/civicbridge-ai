@@ -1,70 +1,75 @@
 from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
 
-from config.prompts import GROUNDED_ANSWER_PROMPT
+from config.prompts import GROUNDED_ANSWER_PROMPT, REFUSAL_ANSWER
 from config.settings import DEFAULT_LLM_MODEL
+from core.vector_store import retrieve_relevant, to_documents
 
 
 def _build_context(documents: list[Document]) -> str:
     """
     Concatenate retrieved document chunks into a single context string.
 
-    Each chunk is separated by a blank line so the LLM can distinguish
-    between passages from different parts of the document.
+    Each passage is wrapped in a numbered tag rather than merely separated by
+    a blank line. Two reasons:
+
+      1. The model can cite "passage 2" instead of paraphrasing vaguely.
+      2. It marks a boundary between INSTRUCTIONS and DATA. Document text is
+         untrusted input: a PDF (or an uploaded one) can contain a sentence
+         like "ignore the instructions above". Explicit delimiters plus an
+         explicit rule in the prompt make that much harder to pull off.
+    """
+    return "\n\n".join(
+        f"<passage id=\"{i}\">\n{doc.page_content}\n</passage>"
+        for i, doc in enumerate(documents, start=1)
+    )
+
+
+def generate_answer(question: str, vector_store) -> dict:
+    """
+    Retrieve relevant passages and generate an answer grounded strictly in them.
+
+    If nothing in the knowledge base is actually about the question, the
+    function returns a refusal **without calling the language model**. That is
+    deliberate: skipping the call makes invention impossible rather than
+    merely discouraged, and costs nothing.
 
     Args:
-        documents: List of retrieved LangChain Document objects.
+        question:     The citizen's question, in English.
+        vector_store: A FAISS store built by `build_vector_store`.
 
     Returns:
-        A single string combining all chunk contents.
-    """
-    return "\n\n".join(doc.page_content for doc in documents)
-
-
-def generate_answer(question: str, retriever) -> dict:
-    """
-    Retrieve relevant document chunks and generate a grounded answer.
-
-    The answer is produced strictly from the retrieved context. If no
-    relevant chunks are found, the function returns a safe fallback message
-    without calling the LLM.
-
-    Args:
-        question:  The citizen's question as a plain string.
-        retriever: A LangChain VectorStoreRetriever (from vector_store.py).
-
-    Returns:
-        A dict with two keys:
-            "answer"           (str)         — the LLM-generated answer.
-            "source_documents" (list[Document]) — the chunks used as context.
+        A dict with:
+            "answer"           (str)             — the answer, or the refusal.
+            "source_documents" (list[Document])  — passages used; empty on refusal.
+            "answered"         (bool)            — False when refused.
+            "why"              (str)             — developer-facing explanation
+                                                   of the retrieval decision.
 
     Raises:
-        Exception: Propagates any OpenAI API errors so the caller can handle
-                   them and display a meaningful message in the UI.
+        Exception: Propagates OpenAI API errors so the caller can show them.
     """
-    source_documents: list[Document] = retriever.invoke(question)
+    decision = retrieve_relevant(vector_store, question)
 
-    if not source_documents:
+    if not decision.accepted:
         return {
-            "answer": (
-                "No relevant information was found in the uploaded document "
-                "for your question. Please try rephrasing, or consult the "
-                "relevant authority directly."
-            ),
+            "answer": REFUSAL_ANSWER,
             "source_documents": [],
+            "answered": False,
+            "why": decision.reason,
         }
 
-    context = _build_context(source_documents)
+    documents = to_documents(decision)
+    context = _build_context(documents)
 
-    prompt = GROUNDED_ANSWER_PROMPT.format(
-        context=context,
-        question=question,
-    )
+    prompt = GROUNDED_ANSWER_PROMPT.format(context=context, question=question)
 
     llm = ChatOpenAI(model=DEFAULT_LLM_MODEL, temperature=0)
     response = llm.invoke(prompt)
 
     return {
         "answer": response.content.strip(),
-        "source_documents": source_documents,
+        "source_documents": documents,
+        "answered": True,
+        "why": decision.reason,
     }

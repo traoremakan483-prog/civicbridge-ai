@@ -60,13 +60,45 @@ The upload is optional and secondary to the built-in domain experience.
 
 | Feature | Languages |
 |---------|-----------|
-| Question input | English, Malay, Indonesian |
-| Interface labels | English, Malay, Indonesian |
-| Output translation | English, Malay, Indonesian |
+| Question input and answers | English, Malay, Tamil, Mandarin, Bengali, Nepali, Burmese, Indonesian |
+| Interface labels | English, Malay, Indonesian — other languages fall back to English |
 
-Questions typed in Malay or Indonesian are automatically translated to English internally
-before retrieval, ensuring accurate semantic search. All outputs can then be translated
-back into the user's chosen language on demand.
+The first version offered English, Malay and Indonesian. A hackathon judge pointed out
+that this was thin *given the concept itself*, and they were right — twice over.
+
+Malay and Indonesian are largely mutually intelligible, so three entries in the dropdown
+were really **two** reaches. Worse, they were the wrong three. Malaysian public services
+already publish in Malay and English: the people those two languages cover were mostly
+managing already. The people who are not are migrant workers — Bengali, Nepali, Burmese —
+Tamil-speaking Malaysian Indians, and older Mandarin speakers.
+
+Nothing technical was stopping this. Translation goes through the model, so a language is
+one line in `config/settings.py`. It was a product failure, not an engineering one: the
+languages picked were the ones the author knew, not the ones the users needed.
+
+**Translations are shown next to the English source.** Machine-translating official
+guidance into a low-resource language is not a neutral act — an error sends someone to the
+wrong office with the wrong documents, after taking a day off they could not afford. The
+answer is not to refuse to translate, but to make checking possible: a bilingual relative
+or a counter clerk can compare the two columns before the person travels.
+
+---
+
+## Answering, and refusing
+
+The retriever used to be a plain similarity search with `k=4`. A similarity search always
+returns its four nearest neighbours — it cannot express *nothing here matches*. Ask a
+healthcare knowledge base how to bake a cake and it returned four weakly-related paragraphs
+and answered from them. The guard meant to catch this was unreachable code.
+
+Retrieved passages now have to clear a relevance threshold before they are used at all, and
+when none does, **the refusal is returned without calling the model**: skipping the call
+makes invention impossible rather than merely discouraged, and costs nothing.
+
+That decision lives in `civicbridge/core/retrieval_policy.py`, deliberately free of
+LangChain and FAISS, so it can be tested without an API key — see below.
+
+---
 
 ---
 
@@ -163,6 +195,23 @@ civicbridge/
 ```
 
 ---
+
+## Tests
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Standard library only — no OpenAI key, no embeddings, no network. That is the point of
+keeping the retrieval decision separate from FAISS: the rule that decides whether
+CivicBridge answers or refuses is checkable on every commit, in milliseconds.
+
+The tests cover the behaviour the old code could not produce at all — refusing an
+off-topic question, returning nothing to answer from, surviving an empty index — and the
+inversion trap: FAISS returns *distance* (lower is closer) while the policy expects
+*relevance* (higher is closer). Confusing the two raises nothing by itself; it just makes
+the assistant answer from the least relevant passages. Passing a raw distance is rejected
+loudly for that reason.
 
 ## Environment Variables
 

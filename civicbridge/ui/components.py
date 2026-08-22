@@ -139,17 +139,53 @@ def render_source_excerpts(source_documents: list) -> None:
             )
 
 
-def render_translation_output(translated_blocks: dict, language: str = "") -> None:
+def render_translation_output(
+    translated_blocks: dict,
+    language: str = "",
+    english_blocks: dict | None = None,
+    notice: str = "",
+) -> None:
     """
-    Render translated versions of all output sections.
+    Affiche la traduction — et, a cote, l'original anglais.
+
+    Pourquoi les deux : traduire automatiquement une consigne administrative
+    officielle vers une langue peu dotee peut envoyer quelqu'un au mauvais
+    guichet avec les mauvais papiers. On ne refuse pas de traduire, on rend la
+    verification possible : un proche bilingue, un agent d'accueil ou un
+    collegue peut confronter les deux colonnes avant que la personne se deplace.
 
     Args:
-        translated_blocks: Dict mapping section label (str) to translated text (str).
-        language:          Display name of the target language.
+        translated_blocks: libelle -> texte traduit.
+        language:          nom de la langue cible.
+        english_blocks:    libelle -> texte anglais d'origine. Si absent, seule
+                           la traduction est affichee (comportement precedent).
+        notice:            avertissement de traduction automatique.
     """
     title = f"🌐 Translation — {language}" if language else "🌐 Translation"
-    rows = "".join(
-        f'<div class="cb-field-row"><div class="cb-field-label">{html.escape(label)}</div><div class="cb-field-value">{_safe_html(text)}</div></div>'
-        for label, text in translated_blocks.items()
+
+    bandeau = (
+        f'<div class="cb-mt-notice">{html.escape(notice)}</div>' if notice else ""
     )
-    _card(title, rows, "translate")
+
+    morceaux = []
+    for label, text in translated_blocks.items():
+        original = (english_blocks or {}).get(label)
+        if original:
+            morceaux.append(
+                f'<div class="cb-field-row">'
+                f'<div class="cb-field-label">{html.escape(label)}</div>'
+                f'<div class="cb-bilingual">'
+                f'<div class="cb-bilingual-col"><div class="cb-bilingual-tag">{html.escape(language)}</div>'
+                f'<div class="cb-field-value">{_safe_html(text)}</div></div>'
+                f'<div class="cb-bilingual-col cb-bilingual-source"><div class="cb-bilingual-tag">English (source)</div>'
+                f'<div class="cb-field-value">{_safe_html(original)}</div></div>'
+                f'</div></div>'
+            )
+        else:
+            morceaux.append(
+                f'<div class="cb-field-row">'
+                f'<div class="cb-field-label">{html.escape(label)}</div>'
+                f'<div class="cb-field-value">{_safe_html(text)}</div></div>'
+            )
+
+    _card(title, bandeau + "".join(morceaux), "translate")

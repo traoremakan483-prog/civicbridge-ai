@@ -12,9 +12,11 @@ from config.settings import (
     SUPPORT_DOMAINS,
     SUPPORTED_LANGUAGES,
     UI_LABELS,
+    ui_labels_for,
+    MACHINE_TRANSLATION_NOTICE,
 )
 from core.document_loader import load_and_split
-from core.vector_store import build_vector_store, get_retriever
+from core.vector_store import build_vector_store
 from core.rag_pipeline import generate_answer
 from core.simplifier import simplify_answer
 from core.action_steps import generate_action_steps
@@ -83,6 +85,37 @@ CSS = """
 /* ── Next-steps fields ──────────────────────────────────── */
 .cb-field-row   { margin-bottom: 0.75rem; }
 .cb-field-row:last-child { margin-bottom: 0; }
+
+/* ── Affichage bilingue traduction / anglais source ──────────────────────── */
+/* Deux colonnes cote a cote sur ecran large, empilees sur mobile : la
+   verification par un tiers doit rester possible sur un telephone, qui est
+   l'appareil de la plupart des personnes concernees. */
+.cb-mt-notice {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  padding: 0.55rem 0.7rem;
+  margin-bottom: 0.9rem;
+  border-left: 3px solid #d99a00;
+  background: rgba(217, 154, 0, 0.08);
+  border-radius: 4px;
+}
+.cb-bilingual {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+}
+@media (max-width: 760px) {
+  .cb-bilingual { grid-template-columns: 1fr; }
+}
+.cb-bilingual-col { min-width: 0; }
+.cb-bilingual-tag {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+  margin-bottom: 0.2rem;
+}
+.cb-bilingual-source { opacity: 0.78; }
 .cb-field-label {
     font-size: 0.75rem; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.06em;
@@ -245,8 +278,10 @@ st.markdown(CSS, unsafe_allow_html=True)
 
 # ── Session state ──────────────────────────────────────────────────────────────
 
-if "retriever" not in st.session_state:
-    st.session_state.retriever = None
+# On conserve l'INDEX, pas un retriever fige : le filtrage par pertinence se
+# decide a chaque question (cf. core/retrieval_policy), pas a la construction.
+if "knowledge_base" not in st.session_state:
+    st.session_state.knowledge_base = None
 if "active_doc_name" not in st.session_state:
     st.session_state.active_doc_name = None
 if "result" not in st.session_state:
@@ -265,7 +300,9 @@ with st.sidebar:
         index=0,
         key="lang_select",
     )
-    L = UI_LABELS[selected_lang]
+    # Repli sur l'anglais pour les langues dont le chrome n'est pas encore
+    # traduit — sinon ajouter une langue casse l'application.
+    L = ui_labels_for(selected_lang)
 
     st.markdown("---")
 
@@ -333,7 +370,7 @@ if uploaded_file is not None:
             chunks = load_document(uploaded_file, filename=uploaded_file.name)
         if chunks:
             try:
-                st.session_state.retriever = get_retriever(build_vector_store(chunks))
+                st.session_state.knowledge_base = build_vector_store(chunks)
                 st.session_state.active_doc_name = doc_name
                 st.session_state.result = None
                 st.sidebar.success(f"✅ {uploaded_file.name} loaded ({len(chunks)} chunks)")
@@ -350,7 +387,7 @@ else:
                 chunks = load_document(domain_path)
             if chunks:
                 try:
-                    st.session_state.retriever = get_retriever(build_vector_store(chunks))
+                    st.session_state.knowledge_base = build_vector_store(chunks)
                     st.session_state.active_doc_name = domain_key
                     st.session_state.result = None
                 except Exception as e:
@@ -365,7 +402,7 @@ else:
 
 # ── What CivicBridge can help with ────────────────────────────────────────────
 
-if st.session_state.retriever is None:
+if st.session_state.knowledge_base is None:
     st.info(L["info_no_doc"])
     st.stop()
 
@@ -448,16 +485,26 @@ if submit:
             # Translate question to English for retrieval if needed
             question_en = translate_to_english(question, selected_lang)
 
-            rag_result = generate_answer(question_en, st.session_state.retriever)
+            rag_result = generate_answer(question_en, st.session_state.knowledge_base)
             answer = rag_result["answer"]
             source_docs = rag_result["source_documents"]
             context = build_context_string(source_docs)
 
-            simple = simplify_answer(answer)
-            steps = generate_action_steps(answer)
-            next_s = generate_next_steps(question_en, context)
+            if not rag_result.get("answered", True):
+                # Rien de pertinent dans le guide. On s'arrete la : simplifier un
+                # refus, en tirer des « etapes d'action » et batir un guide sur un
+                # contexte vide produirait trois appels au modele pour fabriquer
+                # du remplissage a partir de rien. La raison technique du refus
+                # part dans les logs, pas a l'ecran.
+                print(f"[retrieval] refus : {rag_result.get('why', '')}")
+                simple, steps, next_s = "", [], {}
+            else:
+                simple = simplify_answer(answer)
+                steps = generate_action_steps(answer)
+                next_s = generate_next_steps(question_en, context)
 
             st.session_state.result = {
+                "answered": rag_result.get("answered", True),
                 "question": question,
                 "question_en": question_en,
                 "answer": answer,
@@ -488,9 +535,13 @@ if st.session_state.result:
     render_trust_message()
 
     render_official_answer(r["answer"])
-    render_simple_explanation(r["simple"])
-    render_action_steps(r["steps"])
-    render_next_steps(r["next_steps"])
+    # Sur un refus, il n'y a ni explication simplifiee, ni etapes, ni guide :
+    # les afficher vides donnerait l'illusion d'une reponse incomplete alors
+    # que la reponse honnete est « ce guide ne traite pas ce sujet ».
+    if r.get("answered", True):
+        render_simple_explanation(r["simple"])
+        render_action_steps(r["steps"])
+        render_next_steps(r["next_steps"])
 
     st.markdown('<hr class="cb-divider">', unsafe_allow_html=True)
     render_source_excerpts(r["source_docs"])
@@ -528,6 +579,14 @@ if st.session_state.result:
                         label: translate_text(text, selected_lang)
                         for label, text in blocks_to_translate.items()
                     }
-                    render_translation_output(translated, language=selected_lang)
+                    # On passe AUSSI l'anglais d'origine : la traduction d'une
+                    # consigne administrative doit rester verifiable par un
+                    # tiers avant que la personne se deplace.
+                    render_translation_output(
+                        translated,
+                        language=selected_lang,
+                        english_blocks=blocks_to_translate,
+                        notice=MACHINE_TRANSLATION_NOTICE,
+                    )
                 except Exception as e:
                     st.error(f"Translation failed: {e}")
