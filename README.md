@@ -84,6 +84,29 @@ or a counter clerk can compare the two columns before the person travels.
 
 ---
 
+## Cost per question
+
+Answering one question used to take up to thirteen sequential round-trips to the model:
+translate the question, generate the answer, simplify it, extract action steps, build the
+"what next" guide, then translate each of the eight output sections separately. Every one
+of those calls re-sent the same passages or the same answer over the wire.
+
+The four generation calls are now **one** call returning JSON, and the eight translation
+calls are **one** call translating the whole payload.
+
+| | before | after |
+|---|---|---|
+| Question in English | 4 | 1 |
+| Question in another language, translated back | 13 | 3 |
+
+The price of that is a new failure mode — a model can return malformed JSON, drop a key,
+or wrap the object in a code fence. So the response is parsed as untrusted input in
+`civicbridge/core/answer_schema.py`, missing sections are repaired rather than left blank,
+and if the JSON is unusable at all the app falls back to a plain grounded answer instead of
+showing an error. That parser is covered by 17 tests that run without an API key.
+
+---
+
 ## Answering, and refusing
 
 The retriever used to be a plain similarity search with `k=4`. A similarity search always

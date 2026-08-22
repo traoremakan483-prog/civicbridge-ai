@@ -11,17 +11,14 @@ from config.settings import (
     DOMAIN_DESCRIPTIONS,
     SUPPORT_DOMAINS,
     SUPPORTED_LANGUAGES,
-    UI_LABELS,
     ui_labels_for,
     MACHINE_TRANSLATION_NOTICE,
 )
 from core.document_loader import load_and_split
 from core.vector_store import build_vector_store
-from core.rag_pipeline import generate_answer
-from core.simplifier import simplify_answer
-from core.action_steps import generate_action_steps
-from core.next_steps import generate_next_steps
-from core.translator import translate_text, translate_to_english
+from core.rag_pipeline import generate_full_answer
+from core.answer_schema import StructuredAnswer, blocks_for_translation
+from core.translator import translate_blocks, translate_to_english
 from ui.components import (
     render_trust_message,
     render_official_answer,
@@ -485,23 +482,27 @@ if submit:
             # Translate question to English for retrieval if needed
             question_en = translate_to_english(question, selected_lang)
 
-            rag_result = generate_answer(question_en, st.session_state.knowledge_base)
+            # UN appel produit la reponse, l'explication simplifiee, les
+            # etapes d'action et le guide « what next ». C'etaient quatre
+            # allers-retours qui reexpediaient chacun le meme contexte.
+            rag_result = generate_full_answer(
+                question_en, st.session_state.knowledge_base
+            )
             answer = rag_result["answer"]
             source_docs = rag_result["source_documents"]
             context = build_context_string(source_docs)
+            simple = rag_result["simple"]
+            steps = rag_result["action_steps"]
+            next_s = rag_result["next_steps"]
 
-            if not rag_result.get("answered", True):
-                # Rien de pertinent dans le guide. On s'arrete la : simplifier un
-                # refus, en tirer des « etapes d'action » et batir un guide sur un
-                # contexte vide produirait trois appels au modele pour fabriquer
-                # du remplissage a partir de rien. La raison technique du refus
-                # part dans les logs, pas a l'ecran.
-                print(f"[retrieval] refus : {rag_result.get('why', '')}")
-                simple, steps, next_s = "", [], {}
-            else:
-                simple = simplify_answer(answer)
-                steps = generate_action_steps(answer)
-                next_s = generate_next_steps(question_en, context)
+            if not rag_result["answered"]:
+                # Rien de pertinent dans le guide : la raison technique part
+                # dans les logs, pas a l'ecran.
+                print(f"[retrieval] refus : {rag_result['why']}")
+            elif rag_result["repaired"]:
+                # Le modele a omis ou mal forme des champs, reconstruits par
+                # defaut. Invisible pour le citoyen, utile au developpeur.
+                print(f"[answer] champs repares : {', '.join(rag_result['repaired'])}")
 
             st.session_state.result = {
                 "answered": rag_result.get("answered", True),
@@ -556,29 +557,17 @@ if st.session_state.result:
         else:
             with st.spinner(L["spinner_translating"]):
                 try:
-                    blocks_to_translate = {
-                        "Official Answer": r["answer"],
-                        "Simple Explanation": r["simple"],
-                        "Action Steps": "\n".join(
-                            f"{i+1}. {s}" for i, s in enumerate(r["steps"])
-                        ),
-                    }
-                    next_s = r["next_steps"]
-                    for label, key in [
-                        ("Who can apply", "who_can_apply"),
-                        ("Required documents", "required_documents"),
-                        ("Step-by-step process", "step_by_step_process"),
-                        ("Estimated processing time", "estimated_processing_time"),
-                        ("Important notes", "important_notes"),
-                    ]:
-                        value = next_s.get(key, "")
-                        if value and value != "Not specified in the document.":
-                            blocks_to_translate[label] = value
-
-                    translated = {
-                        label: translate_text(text, selected_lang)
-                        for label, text in blocks_to_translate.items()
-                    }
+                    blocks_to_translate = blocks_for_translation(
+                        StructuredAnswer(
+                            answer=r["answer"],
+                            simple=r["simple"],
+                            action_steps=r["steps"],
+                            next_steps=r["next_steps"],
+                        )
+                    )
+                    # UN appel traduit tout le bloc. C'etait jusqu'a huit
+                    # allers-retours sequentiels, un par section.
+                    translated = translate_blocks(blocks_to_translate, selected_lang)
                     # On passe AUSSI l'anglais d'origine : la traduction d'une
                     # consigne administrative doit rester verifiable par un
                     # tiers avant que la personne se deplace.
