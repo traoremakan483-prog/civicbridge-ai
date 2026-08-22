@@ -1,7 +1,7 @@
 [project]
-name = "repl-nix-workspace"
+name = "civicbridge"
 version = "0.1.0"
-description = "Add your description here"
+description = "Multilingual RAG assistant for public-service navigation — English, Bahasa Malaysia, Indonesian"
 requires-python = ">=3.11"
 dependencies = [
     "faiss-cpu==1.10.0",
