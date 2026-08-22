@@ -1,5 +1,7 @@
 import os
 
+import hashlib
+
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -277,6 +279,9 @@ st.markdown(CSS, unsafe_allow_html=True)
 
 # On conserve l'INDEX, pas un retriever fige : le filtrage par pertinence se
 # decide a chaque question (cf. core/retrieval_policy), pas a la construction.
+if "answer_cache" not in st.session_state:
+    st.session_state.answer_cache = {}
+
 if "knowledge_base" not in st.session_state:
     st.session_state.knowledge_base = None
 if "active_doc_name" not in st.session_state:
@@ -358,39 +363,71 @@ st.markdown(
 if not check_api_key():
     st.stop()
 
+# ── Index vectoriels mis en cache ─────────────────────────────────────────────
+#
+# `st.cache_resource` partage l'objet entre TOUTES les sessions du serveur, pas
+# seulement entre les interactions d'un meme visiteur. Sans lui, chaque nouvelle
+# personne qui ouvre l'application ré-encode les quatre PDF : sur un deploiement
+# public, c'est le poste de depense le plus absurde du produit, puisque l'index
+# est rigoureusement identique pour tout le monde.
+#
+# On ne met PAS les reponses en cache avec `st.cache_data` : cela serialiserait
+# des objets Document de LangChain entre les sessions, ce que je ne peux pas
+# verifier ici. Les questions repetees sont mises en cache plus bas, au niveau
+# de la session, avec un simple dictionnaire — sans serialisation, sans risque.
+
+
+@st.cache_resource(show_spinner=False)
+def build_domain_index(domain_name: str):
+    """Index d'un domaine integre. La cle est le nom du domaine."""
+    path = SUPPORT_DOMAINS[domain_name]
+    chunks = load_document(path)
+    if not chunks:
+        raise ValueError(f"Could not read {path.name}.")
+    return build_vector_store(chunks)
+
+
+@st.cache_resource(show_spinner=False)
+def build_uploaded_index(filename: str, digest: str, _uploaded):
+    """
+    Index d'un PDF televerse. La cle est (nom, empreinte du contenu) : le meme
+    fichier renvoye deux fois n'est encode qu'une seule fois. Le prefixe `_` dit
+    a Streamlit de ne pas tenter de hacher l'objet fichier lui-meme.
+    """
+    chunks = load_document(_uploaded, filename=filename)
+    if not chunks:
+        raise ValueError("Could not read the uploaded PDF.")
+    return build_vector_store(chunks)
+
+
 # ── Document loading ───────────────────────────────────────────────────────────
 
 if uploaded_file is not None:
     doc_name = f"upload:{uploaded_file.name}"
     if st.session_state.active_doc_name != doc_name:
-        with st.spinner(L["spinner_loading"]):
-            chunks = load_document(uploaded_file, filename=uploaded_file.name)
-        if chunks:
-            try:
-                st.session_state.knowledge_base = build_vector_store(chunks)
-                st.session_state.active_doc_name = doc_name
-                st.session_state.result = None
-                st.sidebar.success(f"✅ {uploaded_file.name} loaded ({len(chunks)} chunks)")
-            except Exception as e:
-                st.sidebar.error(f"Failed to index document: {e}")
-        else:
-            st.sidebar.error("Could not read the uploaded PDF. Try another file.")
+        try:
+            with st.spinner(L["spinner_loading"]):
+                digest = hashlib.sha256(uploaded_file.getvalue()).hexdigest()[:16]
+                st.session_state.knowledge_base = build_uploaded_index(
+                    uploaded_file.name, digest, uploaded_file
+                )
+            st.session_state.active_doc_name = doc_name
+            st.session_state.result = None
+            st.sidebar.success(f"✅ {uploaded_file.name} loaded")
+        except Exception as e:
+            st.sidebar.error(f"Failed to index document: {e}")
 else:
     domain_key = f"domain:{selected_domain}"
     if st.session_state.active_doc_name != domain_key:
         domain_path = SUPPORT_DOMAINS[selected_domain]
         if domain_path.exists():
-            with st.spinner(L["spinner_loading"]):
-                chunks = load_document(domain_path)
-            if chunks:
-                try:
-                    st.session_state.knowledge_base = build_vector_store(chunks)
-                    st.session_state.active_doc_name = domain_key
-                    st.session_state.result = None
-                except Exception as e:
-                    st.sidebar.error(f"Failed to index knowledge base: {e}")
-            else:
-                st.sidebar.error(f"Could not read {domain_path.name}.")
+            try:
+                with st.spinner(L["spinner_loading"]):
+                    st.session_state.knowledge_base = build_domain_index(selected_domain)
+                st.session_state.active_doc_name = domain_key
+                st.session_state.result = None
+            except Exception as e:
+                st.sidebar.error(f"Failed to index knowledge base: {e}")
         else:
             st.sidebar.error(
                 f"Knowledge base not found: `docs/{domain_path.name}`. "
@@ -482,6 +519,17 @@ if submit:
             # Translate question to English for retrieval if needed
             question_en = translate_to_english(question, selected_lang)
 
+            # Cache au niveau de la SESSION : reposer exactement la meme
+            # question dans le meme document et la meme langue ne doit rien
+            # couter. Volontairement pas `st.cache_data`, qui serialiserait des
+            # objets Document de LangChain entre sessions — un risque que je ne
+            # peux pas verifier sans cle API.
+            cache_key = (st.session_state.active_doc_name, question_en, selected_lang)
+            if cache_key in st.session_state.answer_cache:
+                st.session_state.result = st.session_state.answer_cache[cache_key]
+                print("[cache] question deja posee, aucun appel au modele")
+                st.rerun()
+
             # UN appel produit la reponse, l'explication simplifiee, les
             # etapes d'action et le guide « what next ». C'etaient quatre
             # allers-retours qui reexpediaient chacun le meme contexte.
@@ -504,17 +552,39 @@ if submit:
                 # defaut. Invisible pour le citoyen, utile au developpeur.
                 print(f"[answer] champs repares : {', '.join(rag_result['repaired'])}")
 
+            # Traduction AUTOMATIQUE, plus derriere un bouton. Quelqu'un qui
+            # ecrit en tamoul n'a pas a lire l'anglais puis cliquer pour obtenir
+            # sa langue : c'etait l'inverse de la promesse du produit. Ca ne
+            # coute plus qu'un seul appel depuis le regroupement.
+            translated = None
+            if rag_result["answered"] and selected_lang != "English":
+                blocs = blocks_for_translation(
+                    StructuredAnswer(
+                        answer=answer,
+                        simple=simple,
+                        action_steps=steps,
+                        next_steps=next_s,
+                    )
+                )
+                translated = {
+                    "blocks": translate_blocks(blocs, selected_lang),
+                    "english": blocs,
+                }
+
             st.session_state.result = {
                 "answered": rag_result.get("answered", True),
                 "question": question,
                 "question_en": question_en,
+                "language": selected_lang,
                 "answer": answer,
                 "simple": simple,
                 "steps": steps,
                 "next_steps": next_s,
                 "source_docs": source_docs,
                 "context": context,
+                "translated": translated,
             }
+            st.session_state.answer_cache[cache_key] = st.session_state.result
         except Exception as e:
             st.error(f"Something went wrong: {e}")
             st.stop()
@@ -535,47 +605,29 @@ if st.session_state.result:
 
     render_trust_message()
 
-    render_official_answer(r["answer"])
-    # Sur un refus, il n'y a ni explication simplifiee, ni etapes, ni guide :
-    # les afficher vides donnerait l'illusion d'une reponse incomplete alors
-    # que la reponse honnete est « ce guide ne traite pas ce sujet ».
-    if r.get("answered", True):
-        render_simple_explanation(r["simple"])
-        render_action_steps(r["steps"])
-        render_next_steps(r["next_steps"])
+    traduction = r.get("translated")
+
+    if traduction:
+        # La langue du citoyen d'abord. La traduction est deja calculee — elle
+        # part avec la reponse, plus derriere un bouton — et chaque section est
+        # affichee a cote de son original anglais, pour qu'un tiers puisse
+        # verifier avant que la personne se deplace.
+        render_translation_output(
+            traduction["blocks"],
+            language=r.get("language", ""),
+            english_blocks=traduction["english"],
+            notice=MACHINE_TRANSLATION_NOTICE,
+        )
+    else:
+        # Question posee en anglais, ou refus : rien a traduire.
+        render_official_answer(r["answer"])
+        # Sur un refus, il n'y a ni explication simplifiee, ni etapes, ni guide :
+        # les afficher vides donnerait l'illusion d'une reponse incomplete alors
+        # que la reponse honnete est « ce guide ne traite pas ce sujet ».
+        if r.get("answered", True):
+            render_simple_explanation(r["simple"])
+            render_action_steps(r["steps"])
+            render_next_steps(r["next_steps"])
 
     st.markdown('<hr class="cb-divider">', unsafe_allow_html=True)
     render_source_excerpts(r["source_docs"])
-
-    st.markdown('<hr class="cb-divider">', unsafe_allow_html=True)
-    translate_label = f"{L['translate_btn_prefix']} {selected_lang} →"
-    translate_btn = st.button(translate_label, use_container_width=True)
-
-    if translate_btn:
-        if selected_lang == "English":
-            st.info(L["already_english"])
-        else:
-            with st.spinner(L["spinner_translating"]):
-                try:
-                    blocks_to_translate = blocks_for_translation(
-                        StructuredAnswer(
-                            answer=r["answer"],
-                            simple=r["simple"],
-                            action_steps=r["steps"],
-                            next_steps=r["next_steps"],
-                        )
-                    )
-                    # UN appel traduit tout le bloc. C'etait jusqu'a huit
-                    # allers-retours sequentiels, un par section.
-                    translated = translate_blocks(blocks_to_translate, selected_lang)
-                    # On passe AUSSI l'anglais d'origine : la traduction d'une
-                    # consigne administrative doit rester verifiable par un
-                    # tiers avant que la personne se deplace.
-                    render_translation_output(
-                        translated,
-                        language=selected_lang,
-                        english_blocks=blocks_to_translate,
-                        notice=MACHINE_TRANSLATION_NOTICE,
-                    )
-                except Exception as e:
-                    st.error(f"Translation failed: {e}")

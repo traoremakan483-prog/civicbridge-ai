@@ -84,6 +84,24 @@ or a counter clerk can compare the two columns before the person travels.
 
 ---
 
+## Caching, and translating without being asked
+
+The vector index is built with `st.cache_resource`, which shares it across **every session
+on the server**, not merely across one visitor's clicks. Without it, each new person who
+opens the app re-embeds all four PDFs — the most pointless line on the bill, since the
+index is identical for everyone.
+
+Repeated questions are cached at session level with a plain dictionary rather than
+`st.cache_data`: the latter would serialise LangChain `Document` objects between sessions,
+and that is not something to adopt untested.
+
+Translation is no longer behind a button. Someone writing in Tamil used to receive the
+answer in English and had to click to get their own language — the opposite of what the
+product claims to do. Now the translated version arrives with the answer, each section
+beside its English original, and it costs one extra call rather than eight.
+
+---
+
 ## Cost per question
 
 Answering one question used to take up to thirteen sequential round-trips to the model:
