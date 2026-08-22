@@ -1,4 +1,5 @@
-import fitz
+# PyMuPDF s'importait historiquement sous le nom `fitz`, desormais deprecie.
+import pymupdf
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -23,7 +24,7 @@ def load_pdf(file_path: str) -> list[Document]:
         ValueError: If the PDF contains no extractable text.
     """
     try:
-        pdf = fitz.open(file_path)
+        pdf = pymupdf.open(file_path)
     except Exception as e:
         raise FileNotFoundError(f"Could not open PDF at '{file_path}': {e}")
 

@@ -64,3 +64,10 @@ __pycache__/
 .local/
 .replit
 replit.nix
+
+# Environnement virtuel local
+.venv/
+venv/
+
+# Cle API — ne jamais commiter
+.env
