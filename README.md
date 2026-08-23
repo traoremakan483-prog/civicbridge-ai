@@ -199,6 +199,20 @@ Create a `.env` file in the project root:
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
+### 3b. Check the setup before running
+
+```bash
+./.venv/Scripts/python.exe scripts/check_setup.py
+```
+
+Answers "why doesn't it work?" in one command, instead of leaving you to guess between a
+missing dependency, a forgotten `.env`, a revoked key and a zero balance — four causes with
+four very different and equally opaque error messages. It never prints the key.
+
+The one worth knowing about: a valid key on an account with no credit returns
+`insufficient_quota`, which reads like a bad key and is not. OpenAI accounts created after
+2023 start at zero.
+
 ### 4. Run the app
 
 ```bash
